@@ -42,12 +42,40 @@ const GameMap: React.FC = () => {
   const [agentTask, setAgentTask] = useState<string>("gather");
 
   // State for map controls
-  const [mapZoom, setMapZoom] = useState<number>(1);
+  const [mapZoom, setMapZoom] = useState<number>(1.5);
   const [mapOffset, setMapOffset] = useState<{ x: number; y: number }>({
-    x: 0,
-    y: 0,
+    x: 350,
+    y: 220,
   });
   const [activeOverlay, setActiveOverlay] = useState<string>("ownership");
+
+  // Center map on initial load
+  useEffect(() => {
+    // Center the map based on the average position of all territories
+    if (territories.length > 0) {
+      const centerMap = () => {
+        const avgX =
+          territories.reduce((sum, t) => {
+            const { x } = hexToPixel(t.q, t.r, 30);
+            return sum + x;
+          }, 0) / territories.length;
+
+        const avgY =
+          territories.reduce((sum, t) => {
+            const { y } = hexToPixel(t.q, t.r, 30);
+            return sum + y;
+          }, 0) / territories.length;
+
+        // Adjust vertical position to be higher on the screen
+        // setMapOffset({
+        //   x: 600 - avgX,
+        //   y: 300 - avgY,
+        // });
+      };
+
+      centerMap();
+    }
+  }, [territories]);
 
   // PvP state
   const [battleResult, setBattleResult] = useState<BattleResult | undefined>(
@@ -63,6 +91,7 @@ const GameMap: React.FC = () => {
     y: number;
   }>({ x: 0, y: 0 });
   const [showTooltip, setShowTooltip] = useState<boolean>(false);
+  const [zoomLevel, setZoomLevel] = useState<number>(1);
 
   // Helper functions for resource and agent display
   const getOwnershipColor = (owner: string): string => {
@@ -276,7 +305,7 @@ const GameMap: React.FC = () => {
 
   // Render territory
   const renderTerritory = (territory: any) => {
-    const { x, y } = hexToPixel(territory.q, territory.r, 30 * mapZoom);
+    const { x, y } = hexToPixel(territory.q, territory.r, 30);
     const adjustedX = x + mapOffset.x;
     const adjustedY = y + mapOffset.y;
 
@@ -300,7 +329,7 @@ const GameMap: React.FC = () => {
 
       // Contested territories have a different appearance
       if (territory.status === "contested") {
-        strokeColor = "#f59e0b"; // amber-500
+        fillColor = "#f59e0b"; // amber-500
         strokeColor = "#d97706"; // amber-600
       }
     } else if (activeOverlay === "resources") {
@@ -317,10 +346,14 @@ const GameMap: React.FC = () => {
 
       // Create a circular layout for resources
       if (territory.resources && territory.resources.length > 0) {
+        // Find dominant resource for territory coloring
+        const dominantResource = territory.resources[0];
+        strokeColor = resourceColors[dominantResource] || strokeColor;
+
         const resourceElements = territory.resources.map(
           (resource: string, index: number) => {
             const angle = (index * 2 * Math.PI) / territory.resources.length;
-            const radius = 12 * mapZoom;
+            const radius = 12;
             const resourceX = radius * Math.cos(angle);
             const resourceY = radius * Math.sin(angle);
 
@@ -339,7 +372,7 @@ const GameMap: React.FC = () => {
                 y={resourceY}
                 textAnchor="middle"
                 dominantBaseline="middle"
-                fontSize={10 * mapZoom}
+                fontSize={10}
                 fill={resourceColors[resource] || "#fff"}
               >
                 {icon}
@@ -352,18 +385,16 @@ const GameMap: React.FC = () => {
       }
     }
 
-    // Highlight selected territory
+    // Highlight selected territory - this should override previous stroke colors
     if (selectedTerritory && territory.id === selectedTerritory.id) {
       strokeColor = "#f59e0b"; // amber-500
-      strokeColor = "#fbbf24"; // amber-400
     }
 
     // Apply hover effects
     const isHovered = hoveredTerritory && territory.id === hoveredTerritory.id;
-    const scale = isHovered ? 1.05 : 1; // Scale up by 5% on hover
-    const strokeWidth = isHovered ? 3 : 2; // Thicker border on hover
+    const strokeWidth = isHovered ? 3.5 : 2;
     const glowIntensity = isHovered
-      ? 4
+      ? 6
       : selectedTerritory && territory.id === selectedTerritory.id
       ? 5
       : territory.owner === "player"
@@ -375,11 +406,11 @@ const GameMap: React.FC = () => {
       setHoveredTerritory(territory);
       setShowTooltip(true);
 
-      // Calculate tooltip position
+      // Calculate tooltip position - position to the right side of the territory
       const rect = e.currentTarget.getBoundingClientRect();
       setTooltipPosition({
-        x: rect.left + rect.width / 2,
-        y: rect.top - 10,
+        x: rect.right + 30,
+        y: rect.top + rect.height / 2,
       });
     };
 
@@ -398,7 +429,6 @@ const GameMap: React.FC = () => {
         onMouseLeave={handleMouseLeave}
         style={{
           cursor: "pointer",
-          transition: "transform 0.2s ease-out",
         }}
       >
         {/* Add glow filter for territories */}
@@ -419,18 +449,27 @@ const GameMap: React.FC = () => {
           points="15,0 7.5,13 -7.5,13 -15,0 -7.5,-13 7.5,-13"
           fill={fillColor}
           stroke={strokeColor}
-          strokeWidth={strokeWidth * mapZoom}
-          transform={`scale(${mapZoom * scale})`}
+          strokeWidth={strokeWidth}
           filter={`url(#glow-${territory.id})`}
-          style={{ transition: "transform 0.2s ease, stroke-width 0.2s ease" }}
         />
+
+        {/* Add pattern overlay for resource territories */}
+        {activeOverlay === "resources" &&
+          territory.resources &&
+          territory.resources.length > 0 && (
+            <polygon
+              points="15,0 7.5,13 -7.5,13 -15,0 -7.5,-13 7.5,-13"
+              fill="url(#diagonalHatch)"
+              stroke="none"
+            />
+          )}
+
         <text
           textAnchor="middle"
           dominantBaseline="middle"
           fill="#fff"
-          fontSize={10 * mapZoom * scale}
+          fontSize={10}
           fontWeight="bold"
-          style={{ transition: "font-size 0.2s ease" }}
         >
           {territory.name.split(" ")[0]}
         </text>
@@ -438,12 +477,7 @@ const GameMap: React.FC = () => {
 
         {/* Add Territory Control component for contested territories */}
         {territory.status === "contested" && (
-          <foreignObject
-            x={-20 * mapZoom}
-            y={10 * mapZoom}
-            width={40 * mapZoom}
-            height={20 * mapZoom}
-          >
+          <foreignObject x={-20} y={10} width={40} height={20}>
             <TerritoryControl territory={territory} />
           </foreignObject>
         )}
@@ -457,7 +491,7 @@ const GameMap: React.FC = () => {
     const territory = territories.find((t) => t.name === agent.location);
     if (!territory) return null;
 
-    const { x, y } = hexToPixel(territory.q, territory.r, 30 * mapZoom);
+    const { x, y } = hexToPixel(territory.q, territory.r, 30);
     const adjustedX = x + mapOffset.x;
     const adjustedY = y + mapOffset.y;
 
@@ -467,7 +501,7 @@ const GameMap: React.FC = () => {
     );
     const agentIndex = agentsInTerritory.findIndex((a) => a.id === agent.id);
     const angleOffset = (agentIndex * 2 * Math.PI) / agentsInTerritory.length;
-    const radius = 20 * mapZoom;
+    const radius = 20;
     const offsetX = radius * Math.cos(angleOffset);
     const offsetY = radius * Math.sin(angleOffset);
 
@@ -509,34 +543,20 @@ const GameMap: React.FC = () => {
         onClick={(e) => handleAgentClick(agent, e)}
         style={{ cursor: "pointer" }}
       >
-        <circle
-          r={8 * mapZoom}
-          fill={agentColor}
-          stroke="#000"
-          strokeWidth={1 * mapZoom}
-        />
-        <text
-          textAnchor="middle"
-          dominantBaseline="middle"
-          fontSize={10 * mapZoom}
-        >
+        <circle r={8} fill={agentColor} stroke="#000" strokeWidth={1} />
+        <text textAnchor="middle" dominantBaseline="middle" fontSize={10}>
           {agentIcon}
         </text>
         {selectedAgent && selectedAgent.id === agent.id && (
           <>
             <circle
-              r={12 * mapZoom}
+              r={12}
               fill="none"
               stroke="#f59e0b"
-              strokeWidth={2 * mapZoom}
+              strokeWidth={2}
               strokeDasharray="4,4"
             />
-            <foreignObject
-              x={15 * mapZoom}
-              y={-40 * mapZoom}
-              width={150 * mapZoom}
-              height={80 * mapZoom}
-            >
+            <foreignObject x={15} y={-40} width={150} height={80}>
               <div className="bg-gray-900 bg-opacity-90 p-2 rounded text-white text-xs">
                 <div className="font-bold">{agent.name}</div>
                 <div>Type: {agent.type}</div>
@@ -704,9 +724,8 @@ const GameMap: React.FC = () => {
           <div
             className="absolute inset-0 cursor-move"
             style={{
-              transform: `scale(${mapZoom}) translate(${mapOffset.x}px, ${mapOffset.y}px)`,
+              transform: `translate(${mapOffset.x}px, ${mapOffset.y}px)`,
               transformOrigin: "center",
-              transition: "transform 0.3s ease",
             }}
             onMouseDown={(e) => {
               const startX = e.clientX;
@@ -718,8 +737,8 @@ const GameMap: React.FC = () => {
                 const dx = moveEvent.clientX - startX;
                 const dy = moveEvent.clientY - startY;
                 setMapOffset({
-                  x: startOffsetX + dx / mapZoom,
-                  y: startOffsetY + dy / mapZoom,
+                  x: startOffsetX + dx,
+                  y: startOffsetY + dy,
                 });
               };
 
@@ -739,8 +758,8 @@ const GameMap: React.FC = () => {
               const cursorY = e.clientY - rect.top;
 
               // Calculate the cursor position in the scaled/translated coordinate system
-              const worldX = (cursorX - mapOffset.x * mapZoom) / mapZoom;
-              const worldY = (cursorY - mapOffset.y * mapZoom) / mapZoom;
+              const worldX = (cursorX - mapOffset.x) / mapZoom;
+              const worldY = (cursorY - mapOffset.y) / mapZoom;
 
               // Calculate new zoom level
               const zoomDelta = e.deltaY < 0 ? 1.1 : 0.9;
@@ -757,9 +776,12 @@ const GameMap: React.FC = () => {
             <svg
               width="100%"
               height="100%"
-              viewBox="-500 -500 1000 1000"
-              className="overflow-visible"
-              style={{ minHeight: "70vh" }}
+              viewBox="0 0 1200 800"
+              preserveAspectRatio="xMidYMid meet"
+              style={{
+                transform: `scale(${mapZoom})`,
+                transformOrigin: "center",
+              }}
             >
               {/* Grid background */}
               <defs>
@@ -776,15 +798,27 @@ const GameMap: React.FC = () => {
                     strokeWidth="0.5"
                   />
                 </pattern>
-              </defs>
-              <rect
-                x="-500"
-                y="-500"
-                width="1000"
-                height="1000"
-                fill="url(#grid)"
-              />
 
+                {/* Diagonal hatch pattern for resource territories */}
+                <pattern
+                  id="diagonalHatch"
+                  width="8"
+                  height="8"
+                  patternUnits="userSpaceOnUse"
+                  patternTransform="rotate(45)"
+                >
+                  <line
+                    x1="0"
+                    y1="0"
+                    x2="0"
+                    y2="8"
+                    stroke="#ffffff"
+                    strokeWidth="1"
+                    strokeOpacity="0.3"
+                  />
+                </pattern>
+              </defs>
+              <rect x="0" y="0" width="1200" height="800" fill="url(#grid)" />
               {/* Grid coordinates */}
               <g>
                 {Array.from({ length: 10 }, (_, i) => (
@@ -818,30 +852,83 @@ const GameMap: React.FC = () => {
           {/* Territory Tooltip */}
           {showTooltip && hoveredTerritory && (
             <div
-              className="absolute z-10 bg-dark-gray border border-neon-blue rounded p-2 text-sm pointer-events-none"
+              className="absolute z-10 bg-dark-gray border border-neon-blue rounded p-3 text-sm pointer-events-none"
               style={{
                 left: `${tooltipPosition.x}px`,
                 top: `${tooltipPosition.y}px`,
-                transform: "translate(-50%, -100%)",
-                transition: "opacity 0.2s ease",
-                boxShadow: "0 0 10px rgba(66, 153, 225, 0.5)",
+                transform: "translate(0, -50%)",
+                minWidth: "200px",
+                opacity: 0.95,
               }}
             >
-              <div className="font-bold text-neon-blue">
+              <div className="font-bold text-neon-blue text-base mb-1">
                 {hoveredTerritory.name}
               </div>
-              <div className="text-gray-300">Type: {hoveredTerritory.type}</div>
-              {hoveredTerritory.resources && (
-                <div className="text-gray-300">
-                  Resources: {hoveredTerritory.resources.join(", ")}
-                </div>
-              )}
+              <div className="text-gray-300 flex justify-between">
+                <span>Type:</span>
+                <span className="text-neon-green">{hoveredTerritory.type}</span>
+              </div>
               {hoveredTerritory.level && (
-                <div className="text-gray-300">
-                  Level: {hoveredTerritory.level}
+                <div className="text-gray-300 flex justify-between">
+                  <span>Level:</span>
+                  <span className="text-neon-yellow">
+                    {hoveredTerritory.level}
+                  </span>
                 </div>
               )}
-              <div className="text-gray-300 mt-1">Click to select</div>
+              <div className="text-gray-300 flex justify-between">
+                <span>Status:</span>
+                <span
+                  className={
+                    hoveredTerritory.status === "contested"
+                      ? "text-neon-pink"
+                      : "text-neon-green"
+                  }
+                >
+                  {hoveredTerritory.status}
+                </span>
+              </div>
+              <div className="text-gray-300 flex justify-between">
+                <span>Owner:</span>
+                <span
+                  className={
+                    hoveredTerritory.owner === "player"
+                      ? "text-neon-blue"
+                      : hoveredTerritory.owner === "rival"
+                      ? "text-neon-pink"
+                      : "text-neon-green"
+                  }
+                >
+                  {hoveredTerritory.owner === "player"
+                    ? "You"
+                    : hoveredTerritory.owner === "rival"
+                    ? "Rival Syndicate"
+                    : "Neutral"}
+                </span>
+              </div>
+              {hoveredTerritory.resources &&
+                hoveredTerritory.resources.length > 0 && (
+                  <div className="mt-2 border-t border-gray-700 pt-2">
+                    <div className="text-gray-300 mb-1">Resources:</div>
+                    <div className="flex flex-wrap gap-1">
+                      {hoveredTerritory.resources.map(
+                        (resource: string, index: number) => (
+                          <div
+                            key={index}
+                            className="bg-dark-blue px-1.5 py-0.5 rounded border border-neon-green"
+                          >
+                            <span>
+                              {getResourceIcon(resource)} {resource}
+                            </span>
+                          </div>
+                        )
+                      )}
+                    </div>
+                  </div>
+                )}
+              <div className="text-gray-400 mt-2 text-xs italic">
+                Click to select
+              </div>
             </div>
           )}
         </div>
@@ -1079,7 +1166,7 @@ const GameMap: React.FC = () => {
 
                 <div className="pt-2">
                   <button
-                    className="w-full p-2 bg-neon-red bg-opacity-20 border border-neon-red text-neon-red hover:bg-opacity-30 transition-colors rounded"
+                    className="w-full p-2 bg-neon-red bg-opacity-20 border border-neon-red text-neon-red hover:bg-opacity-30 transition-colors rounded font-cyber"
                     onClick={() => handleRecallAgent(selectedAgent.id)}
                     disabled={selectedAgent.status === "recalling"}
                   >

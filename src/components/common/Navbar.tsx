@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import AptosWalletConnect from "./AptosWalletConnect";
 import { useGame } from "../../context/GameContext";
@@ -21,6 +21,7 @@ const Navbar: React.FC<NavbarProps> = ({
   const location = useLocation();
   const navigate = useNavigate();
   const { currentPlayer } = useGame();
+  const [mobileMenuOpen, setMobileMenuOpen] = useState<boolean>(false);
 
   const handleWalletConnect = (address: string) => {
     if (onWalletConnect) {
@@ -123,7 +124,13 @@ const Navbar: React.FC<NavbarProps> = ({
           )}
 
           {/* Wallet connection */}
-          <AptosWalletConnect onWalletConnect={handleWalletConnect} />
+          <div>
+            {onWalletConnect ? (
+              <AptosWalletConnect onWalletConnect={handleWalletConnect} />
+            ) : (
+              <AptosWalletConnect onWalletConnect={(address) => console.log("Wallet connected:", address)} />
+            )}
+          </div>
 
           {/* Game Map Button */}
           {showGameMapButton && location.pathname !== "/map" && (
@@ -196,7 +203,13 @@ const Navbar: React.FC<NavbarProps> = ({
               {/* Wallet Connection (Mobile) */}
               <div className="pt-2">
                 {!walletAddress ? (
-                  <AptosWalletConnect onWalletConnect={onWalletConnect} />
+                  <div>
+                    {onWalletConnect ? (
+                      <AptosWalletConnect onWalletConnect={onWalletConnect} />
+                    ) : (
+                      <AptosWalletConnect onWalletConnect={(address) => console.log("Wallet connected:", address)} />
+                    )}
+                  </div>
                 ) : (
                   <div className="text-neon-green font-cyber text-sm">
                     {`${walletAddress.substring(0, 6)}...${walletAddress.substring(walletAddress.length - 4)}`}

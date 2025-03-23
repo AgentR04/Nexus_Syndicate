@@ -29,11 +29,7 @@ const Dashboard: React.FC = () => {
     name: "NeonHunter",
     username: "NeonHunter_42",
     avatar: "https://via.placeholder.com/150",
-    username: "NeonHunter_42",
-    avatar: "https://via.placeholder.com/150",
     level: 42,
-    reputation: 78,
-    syndicate: "Quantum Syndicate",
     reputation: 78,
     syndicate: "Quantum Syndicate",
     faction: "Quantum Syndicate",
@@ -64,77 +60,73 @@ const Dashboard: React.FC = () => {
     notifications: [
       {
         id: 1,
+        type: "alert",
         message: "Your territory in Sector 7 is under attack!",
-        timestamp: "10 minutes ago",
-        read: false,
-        category: "alert",
+        time: "10 minutes ago",
       },
       {
         id: 2,
+        type: "info",
         message: "Market prices for Quantum Cores have increased by 15%",
-        timestamp: "1 hour ago",
-        read: false,
-        category: "info",
+        time: "1 hour ago",
       },
       {
         id: 3,
+        type: "success",
         message: "Agent deployment in Sector 12 successful",
-        timestamp: "3 hours ago",
-        read: false,
-        category: "success",
+        time: "3 hours ago",
       },
       {
         id: 4,
+        type: "info",
         message: "New governance proposal available for voting",
-        timestamp: "5 hours ago",
-        read: false,
-        category: "info",
+        time: "5 hours ago",
       },
     ],
     achievements: [
       {
         id: 1,
-        name: "Territory Dominator",
+        title: "Territory Dominator",
         description: "Control 10 territories simultaneously",
-        unlocked: false,
         progress: 80,
-        maxProgress: 100,
+        reward: "500 Credits + Unique Badge",
+        completed: false,
         category: "territory",
       },
       {
         id: 2,
-        name: "Resource Baron",
+        title: "Resource Baron",
         description: "Accumulate 10,000 Data Shards",
-        unlocked: false,
         progress: 65,
-        maxProgress: 100,
+        reward: "3 Quantum Cores",
+        completed: false,
         category: "resources",
       },
       {
         id: 3,
-        name: "Master Strategist",
+        title: "Master Strategist",
         description: "Win 50 strategic battles",
-        unlocked: true,
         progress: 100,
-        maxProgress: 100,
+        reward: "Legendary AI Agent Blueprint",
+        completed: true,
         category: "combat",
       },
       {
         id: 4,
-        name: "Tech Innovator",
+        title: "Tech Innovator",
         description: "Research all Tier 1 technologies",
-        unlocked: false,
         progress: 90,
-        maxProgress: 100,
+        reward: "Advanced Research Terminal",
+        completed: false,
         category: "technology",
       },
       {
         id: 5,
-        name: "Syndicate Leader",
+        title: "Syndicate Leader",
         description: "Lead a syndicate of 20+ members",
-        unlocked: true,
         progress: 100,
-        maxProgress: 100,
+        reward: "Unique Syndicate Emblem",
+        completed: true,
         category: "social",
       },
     ],
@@ -361,8 +353,7 @@ const Dashboard: React.FC = () => {
         */}
 
         {/* Game Stats Section */}
-        {/* 
-        <div className="mb-8">
+        {/* <div className="mb-8">
           <h2 className="text-xl md:text-2xl font-cyber text-neon-green mb-4">
             OPERATIVE STATS
           </h2>
@@ -473,7 +464,7 @@ const Dashboard: React.FC = () => {
               </div>
             </div>
           </div>
-        </div>
+        </div> 
         */}
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
