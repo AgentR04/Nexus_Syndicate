@@ -1,499 +1,1181 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import AptosWalletConnect from '../components/common/AptosWalletConnect';
+import React, { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import Navbar from "../components/common/Navbar";
+import TerritoryControl from "../components/TerritoryControl";
+import { useGame } from "../context/GameContext";
+import gameService from "../services/gameService";
+import { BattleResult } from "../types/gameTypes";
 
 // Hex grid utility functions
 const hexToPixel = (q: number, r: number, size: number) => {
-  const x = size * (3/2 * q);
-  const y = size * (Math.sqrt(3)/2 * q + Math.sqrt(3) * r);
+  const x = size * ((3 / 2) * q);
+  const y = size * ((Math.sqrt(3) / 2) * q + Math.sqrt(3) * r);
   return { x, y };
 };
 
-// Territory type definition
-interface Territory {
-  id: number;
-  q: number;
-  r: number;
-  name: string;
-  type: string;
-  owner: string;
-  status: string;
-  resources: string[];
-}
-
-// Agent type definition
-interface Agent {
-  id: number;
-  name: string;
-  type: string;
-  status: string;
-  location: string;
-  task: string;
-}
-
-// Mock data for territories
-const mockTerritories: Territory[] = [
-  { id: 1, q: 0, r: 0, name: 'Neon District', type: 'urban', owner: 'player', status: 'secure', resources: ['credits', 'dataShards'] },
-  { id: 2, q: 1, r: -1, name: 'Quantum Fields', type: 'research', owner: 'player', status: 'contested', resources: ['quantumCores', 'syntheticAlloys'] },
-  { id: 3, q: 0, r: -1, name: 'Digital Wastes', type: 'industrial', owner: 'player', status: 'secure', resources: ['dataShards', 'syntheticAlloys'] },
-  { id: 4, q: -1, r: 0, name: 'Cyber Nexus', type: 'commercial', owner: 'player', status: 'secure', resources: ['credits', 'dataShards'] },
-  { id: 5, q: -1, r: 1, name: 'Shadow Market', type: 'black-market', owner: 'rival', status: 'contested', resources: ['credits', 'quantumCores'] },
-  { id: 6, q: 0, r: 1, name: 'Tech Haven', type: 'residential', owner: 'neutral', status: 'secure', resources: ['dataShards', 'credits'] },
-  { id: 7, q: 1, r: 0, name: 'Synthetic Labs', type: 'research', owner: 'rival', status: 'contested', resources: ['syntheticAlloys', 'quantumCores'] },
-  { id: 8, q: 2, r: -2, name: 'Quantum Nexus', type: 'research', owner: 'neutral', status: 'secure', resources: ['quantumCores'] },
-  { id: 9, q: 2, r: -1, name: 'Data Haven', type: 'digital', owner: 'neutral', status: 'secure', resources: ['dataShards'] },
-  { id: 10, q: 2, r: 0, name: 'Neural Network', type: 'digital', owner: 'rival', status: 'secure', resources: ['dataShards', 'quantumCores'] },
-  { id: 11, q: 1, r: 1, name: 'Cybernetic Outpost', type: 'military', owner: 'rival', status: 'secure', resources: ['syntheticAlloys'] },
-  { id: 12, q: 0, r: 2, name: 'Neon Wasteland', type: 'industrial', owner: 'neutral', status: 'contested', resources: ['credits', 'syntheticAlloys'] },
-  { id: 13, q: -1, r: 2, name: 'Synthetic Forge', type: 'industrial', owner: 'neutral', status: 'secure', resources: ['syntheticAlloys'] },
-  { id: 14, q: -2, r: 2, name: 'Credit Exchange', type: 'financial', owner: 'rival', status: 'secure', resources: ['credits'] },
-  { id: 15, q: -2, r: 1, name: 'Black Market Hub', type: 'black-market', owner: 'neutral', status: 'contested', resources: ['credits', 'quantumCores'] },
-  { id: 16, q: -2, r: 0, name: "Hacker's Den", type: 'digital', owner: 'player', status: 'secure', resources: ['dataShards'] },
-  { id: 17, q: -1, r: -1, name: 'Quantum Vault', type: 'financial', owner: 'player', status: 'secure', resources: ['credits', 'quantumCores'] },
-  { id: 18, q: 0, r: -2, name: 'Synthetic Research', type: 'research', owner: 'neutral', status: 'secure', resources: ['syntheticAlloys', 'dataShards'] },
-  { id: 19, q: 1, r: -2, name: 'Digital Fortress', type: 'military', owner: 'player', status: 'secure', resources: ['dataShards', 'syntheticAlloys'] },
-];
-
-// Mock data for AI agents
-const mockAgents: Agent[] = [
-  { id: 1, name: 'Scout-X1', type: 'scout', status: 'active', location: 'Neon District', task: 'Gathering intelligence' },
-  { id: 2, name: 'Defender-D3', type: 'defense', status: 'active', location: 'Quantum Fields', task: 'Protecting territory' },
-  { id: 3, name: 'Trader-T7', type: 'trader', status: 'active', location: 'Cyber Nexus', task: 'Market analysis' },
-  { id: 4, name: 'Infiltrator-I9', type: 'scout', status: 'moving', location: 'En route to Shadow Market', task: 'Infiltration' },
-  { id: 5, name: 'Harvester-H2', type: 'resource', status: 'active', location: 'Digital Wastes', task: 'Resource extraction' },
-];
-
 const GameMap: React.FC = () => {
   const navigate = useNavigate();
-  const [walletAddress, setWalletAddress] = useState<string>('');
-  const [selectedTerritory, setSelectedTerritory] = useState<Territory | null>(null);
+  const {
+    territories,
+    agents,
+    players,
+    currentPlayer,
+    gameEvents,
+    setTerritories,
+    setAgents,
+    setGameEvents,
+    setSelectedTerritory,
+    setSelectedAgent,
+    selectedTerritory,
+    selectedAgent,
+    claimTerritory,
+    attackTerritory,
+    deployAgent,
+    extractResources,
+  } = useGame();
+
+  // State for agent deployment modal
+  const [showAgentDeployment, setShowAgentDeployment] =
+    useState<boolean>(false);
+  const [agentType, setAgentType] = useState<string>("scout");
+  const [targetTerritoryId, setTargetTerritoryId] = useState<number>(0);
+  const [agentTask, setAgentTask] = useState<string>("gather");
+
+  // State for map controls
   const [mapZoom, setMapZoom] = useState<number>(1);
-  const [mapOffset, setMapOffset] = useState<{x: number, y: number}>({x: 0, y: 0});
-  const [activeOverlay, setActiveOverlay] = useState<string>('ownership');
-  const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null);
-  const [showAgentDeployment, setShowAgentDeployment] = useState<boolean>(false);
-  
-  const handleWalletConnect = (address: string) => {
-    setWalletAddress(address);
+  const [mapOffset, setMapOffset] = useState<{ x: number; y: number }>({
+    x: 0,
+    y: 0,
+  });
+  const [activeOverlay, setActiveOverlay] = useState<string>("ownership");
+
+  // PvP state
+  const [battleResult, setBattleResult] = useState<BattleResult | undefined>(
+    undefined
+  );
+  const [showBattleOverlay, setShowBattleOverlay] = useState<boolean>(false);
+  const [attackingAgentIds, setAttackingAgentIds] = useState<number[]>([]);
+
+  // Hover state for territories
+  const [hoveredTerritory, setHoveredTerritory] = useState<any>(null);
+  const [tooltipPosition, setTooltipPosition] = useState<{
+    x: number;
+    y: number;
+  }>({ x: 0, y: 0 });
+  const [showTooltip, setShowTooltip] = useState<boolean>(false);
+
+  // Helper functions for resource and agent display
+  const getOwnershipColor = (owner: string): string => {
+    switch (owner) {
+      case "player":
+        return "#4287f5"; // blue
+      case "rival":
+        return "#f54242"; // red
+      case "neutral":
+      default:
+        return "#a0a0a0"; // gray
+    }
   };
-  
-  const handleTerritorySelect = (territory: Territory) => {
+
+  const getResourceColor = (resource: string): string => {
+    switch (resource) {
+      case "credits":
+        return "#f5d742"; // gold
+      case "dataShards":
+        return "#42c5f5"; // light blue
+      case "syntheticAlloys":
+        return "#42f56f"; // green
+      case "quantumProcessors":
+        return "#c842f5"; // purple
+      default:
+        return "#a0a0a0"; // gray
+    }
+  };
+
+  const getResourceIcon = (resource: string): string => {
+    switch (resource) {
+      case "credits":
+        return "₵";
+      case "dataShards":
+        return "D";
+      case "syntheticAlloys":
+        return "A";
+      case "quantumProcessors":
+        return "Q";
+      default:
+        return "?";
+    }
+  };
+
+  const getAgentIcon = (type: string): string => {
+    switch (type) {
+      case "scout":
+        return "S";
+      case "defense":
+        return "D";
+      case "trader":
+        return "T";
+      case "resource":
+        return "R";
+      default:
+        return "?";
+    }
+  };
+
+  // Handle agent deployment
+  const handleAgentDeployment = () => {
+    if (selectedTerritory) {
+      const updatedAgents = gameService.deployAgent(
+        agentType,
+        selectedTerritory.id,
+        agentTask,
+        agents,
+        territories
+      );
+      setAgents(updatedAgents);
+      setShowAgentDeployment(false);
+    }
+  };
+
+  // Handle agent recall
+  const handleRecallAgent = (agentId: number) => {
+    const updatedAgents = gameService.recallAgent(agentId, agents);
+    setAgents(updatedAgents);
+  };
+
+  // Subscribe to game events
+  useEffect(() => {
+    // Set up event listeners if needed
+    const handleTerritoriesUpdated = (updatedTerritories: any) => {
+      setTerritories(updatedTerritories);
+
+      // Update selected territory if it was updated
+      if (selectedTerritory) {
+        const updatedSelectedTerritory = updatedTerritories.find(
+          (t: any) => t.id === selectedTerritory.id
+        );
+        if (updatedSelectedTerritory) {
+          setSelectedTerritory(updatedSelectedTerritory);
+        }
+      }
+    };
+
+    const handleAgentsUpdated = (updatedAgents: any) => {
+      setAgents(updatedAgents);
+
+      // Update selected agent if it was updated
+      if (selectedAgent) {
+        const updatedSelectedAgent = updatedAgents.find(
+          (a: any) => a.id === selectedAgent.id
+        );
+        if (updatedSelectedAgent) {
+          setSelectedAgent(updatedSelectedAgent);
+        }
+      }
+    };
+
+    const handleEventsUpdated = (updatedEvents: any) => {
+      setGameEvents(updatedEvents);
+
+      // Play notification sound or visual effect for new events
+      if (updatedEvents.length > 0 && gameEvents.length > 0) {
+        if (updatedEvents[0].id !== gameEvents[0].id) {
+          // New event received - could add sound effect here
+          console.log("New game event:", updatedEvents[0].message);
+        }
+      }
+    };
+
+    // Handle battle results
+    const handleBattleResult = (result: BattleResult) => {
+      setBattleResult(result);
+      setShowBattleOverlay(true);
+    };
+
+    // Start the game cycle if it's not already running
+    gameService.startGameCycle();
+
+    // Subscribe to events
+    gameService.on("territories_updated", handleTerritoriesUpdated);
+    gameService.on("agents_updated", handleAgentsUpdated);
+    gameService.on("events_updated", handleEventsUpdated);
+    gameService.on("battle_result", handleBattleResult);
+
+    // Return cleanup function
+    return () => {
+      gameService.off("territories_updated", handleTerritoriesUpdated);
+      gameService.off("agents_updated", handleAgentsUpdated);
+      gameService.off("events_updated", handleEventsUpdated);
+      gameService.off("battle_result", handleBattleResult);
+    };
+  }, [
+    gameEvents,
+    selectedTerritory,
+    selectedAgent,
+    setTerritories,
+    setAgents,
+    setGameEvents,
+    setSelectedTerritory,
+    setSelectedAgent,
+  ]);
+
+  // Handle territory click
+  const handleTerritoryClick = (territory: any) => {
     setSelectedTerritory(territory);
+    setSelectedAgent(null);
   };
-  
-  const handleAgentSelect = (agent: Agent) => {
+
+  // Handle agent click
+  const handleAgentClick = (agent: any, event: React.MouseEvent) => {
+    event.stopPropagation();
     setSelectedAgent(agent);
   };
-  
-  const handleZoomIn = () => {
-    setMapZoom(prev => Math.min(prev + 0.2, 2));
-  };
-  
-  const handleZoomOut = () => {
-    setMapZoom(prev => Math.max(prev - 0.2, 0.6));
-  };
-  
-  const handleMapDrag = (e: React.MouseEvent<HTMLDivElement>) => {
-    // Implement map dragging functionality
-  };
-  
-  const handleOverlayChange = (overlay: string) => {
-    setActiveOverlay(overlay);
-  };
-  
-  const handleAgentDeployment = () => {
-    setShowAgentDeployment(!showAgentDeployment);
-  };
-  
-  const getOwnershipColor = (owner: string) => {
-    switch(owner) {
-      case 'player':
-        return 'border-neon-blue';
-      case 'rival':
-        return 'border-neon-pink';
-      default:
-        return 'border-neon-green';
+
+  // Handle territory claim
+  const handleClaimTerritory = () => {
+    if (selectedTerritory) {
+      const updatedTerritories = gameService.claimTerritory(
+        selectedTerritory.id,
+        territories
+      );
+      setTerritories(updatedTerritories);
     }
   };
-  
-  const getResourceIcon = (resource: string) => {
-    switch(resource) {
-      case 'credits':
-        return '💰';
-      case 'dataShards':
-        return '💾';
-      case 'syntheticAlloys':
-        return '🔩';
-      case 'quantumCores':
-        return '⚛️';
-      default:
-        return '❓';
+
+  // Handle territory attack
+  const handleAttackTerritory = () => {
+    if (selectedTerritory) {
+      // Get agents at this territory that can attack
+      const availableAgents = agents.filter(
+        (a) =>
+          a.location === selectedTerritory.name &&
+          a.status === "active" &&
+          a.ownerId === currentPlayer?.id &&
+          (!a.cooldownUntil || a.cooldownUntil < Date.now())
+      );
+
+      if (availableAgents.length === 0) {
+        alert(
+          "You need at least one active agent in this territory to attack!"
+        );
+        return;
+      }
+
+      // Set the attacking agents
+      setAttackingAgentIds(availableAgents.map((a) => a.id));
+
+      // Perform the attack
+      const updatedTerritories = gameService.attackTerritory(
+        selectedTerritory.id,
+        territories,
+        agents
+      );
+      setTerritories(updatedTerritories);
     }
   };
-  
-  const getAgentIcon = (type: string) => {
-    switch(type) {
-      case 'scout':
-        return '🔍';
-      case 'defense':
-        return '🛡️';
-      case 'trader':
-        return '💹';
-      case 'resource':
-        return '⛏️';
-      default:
-        return '🤖';
+
+  // Render territory
+  const renderTerritory = (territory: any) => {
+    const { x, y } = hexToPixel(territory.q, territory.r, 30 * mapZoom);
+    const adjustedX = x + mapOffset.x;
+    const adjustedY = y + mapOffset.y;
+
+    // Determine territory color based on owner and overlay type
+    let fillColor = "#555";
+    let strokeColor = "#777";
+    let resourceIcon = null;
+
+    if (activeOverlay === "ownership") {
+      // Ownership view
+      if (territory.owner === "player") {
+        fillColor = "#3b82f6"; // blue-500
+        strokeColor = "#1d4ed8"; // blue-700
+      } else if (territory.owner === "rival") {
+        fillColor = "#ef4444"; // red-500
+        strokeColor = "#b91c1c"; // red-700
+      } else {
+        fillColor = "#6b7280"; // gray-500
+        strokeColor = "#374151"; // gray-700
+      }
+
+      // Contested territories have a different appearance
+      if (territory.status === "contested") {
+        strokeColor = "#f59e0b"; // amber-500
+        strokeColor = "#d97706"; // amber-600
+      }
+    } else if (activeOverlay === "resources") {
+      // Resources view - show resource types with colors
+      fillColor = "#1f2937"; // gray-800
+      strokeColor = "#374151"; // gray-700
+
+      const resourceColors: Record<string, string> = {
+        credits: "#fbbf24", // amber-400
+        dataShards: "#3b82f6", // blue-500
+        syntheticAlloys: "#10b981", // emerald-500
+        quantumCores: "#8b5cf6", // purple-500
+      };
+
+      // Create a circular layout for resources
+      if (territory.resources && territory.resources.length > 0) {
+        const resourceElements = territory.resources.map(
+          (resource: string, index: number) => {
+            const angle = (index * 2 * Math.PI) / territory.resources.length;
+            const radius = 12 * mapZoom;
+            const resourceX = radius * Math.cos(angle);
+            const resourceY = radius * Math.sin(angle);
+
+            let icon = "●"; // Default icon
+
+            // Set resource-specific icons
+            if (resource === "credits") icon = "💰";
+            if (resource === "dataShards") icon = "💾";
+            if (resource === "syntheticAlloys") icon = "🔩";
+            if (resource === "quantumCores") icon = "⚛️";
+
+            return (
+              <text
+                key={`${territory.id}-${resource}`}
+                x={resourceX}
+                y={resourceY}
+                textAnchor="middle"
+                dominantBaseline="middle"
+                fontSize={10 * mapZoom}
+                fill={resourceColors[resource] || "#fff"}
+              >
+                {icon}
+              </text>
+            );
+          }
+        );
+
+        resourceIcon = <g transform={`translate(0, 0)`}>{resourceElements}</g>;
+      }
     }
+
+    // Highlight selected territory
+    if (selectedTerritory && territory.id === selectedTerritory.id) {
+      strokeColor = "#f59e0b"; // amber-500
+      strokeColor = "#fbbf24"; // amber-400
+    }
+
+    // Apply hover effects
+    const isHovered = hoveredTerritory && territory.id === hoveredTerritory.id;
+    const scale = isHovered ? 1.05 : 1; // Scale up by 5% on hover
+    const strokeWidth = isHovered ? 3 : 2; // Thicker border on hover
+    const glowIntensity = isHovered
+      ? 4
+      : selectedTerritory && territory.id === selectedTerritory.id
+      ? 5
+      : territory.owner === "player"
+      ? 3
+      : 2;
+
+    // Handle mouse enter for territory hover
+    const handleMouseEnter = (e: React.MouseEvent) => {
+      setHoveredTerritory(territory);
+      setShowTooltip(true);
+
+      // Calculate tooltip position
+      const rect = e.currentTarget.getBoundingClientRect();
+      setTooltipPosition({
+        x: rect.left + rect.width / 2,
+        y: rect.top - 10,
+      });
+    };
+
+    // Handle mouse leave for territory hover
+    const handleMouseLeave = () => {
+      setHoveredTerritory(null);
+      setShowTooltip(false);
+    };
+
+    return (
+      <g
+        key={territory.id}
+        transform={`translate(${adjustedX}, ${adjustedY})`}
+        onClick={() => handleTerritoryClick(territory)}
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
+        style={{
+          cursor: "pointer",
+          transition: "transform 0.2s ease-out",
+        }}
+      >
+        {/* Add glow filter for territories */}
+        <defs>
+          <filter
+            id={`glow-${territory.id}`}
+            x="-30%"
+            y="-30%"
+            width="160%"
+            height="160%"
+          >
+            <feGaussianBlur stdDeviation={glowIntensity} result="blur" />
+            <feComposite in="SourceGraphic" in2="blur" operator="over" />
+          </filter>
+        </defs>
+
+        <polygon
+          points="15,0 7.5,13 -7.5,13 -15,0 -7.5,-13 7.5,-13"
+          fill={fillColor}
+          stroke={strokeColor}
+          strokeWidth={strokeWidth * mapZoom}
+          transform={`scale(${mapZoom * scale})`}
+          filter={`url(#glow-${territory.id})`}
+          style={{ transition: "transform 0.2s ease, stroke-width 0.2s ease" }}
+        />
+        <text
+          textAnchor="middle"
+          dominantBaseline="middle"
+          fill="#fff"
+          fontSize={10 * mapZoom * scale}
+          fontWeight="bold"
+          style={{ transition: "font-size 0.2s ease" }}
+        >
+          {territory.name.split(" ")[0]}
+        </text>
+        {resourceIcon}
+
+        {/* Add Territory Control component for contested territories */}
+        {territory.status === "contested" && (
+          <foreignObject
+            x={-20 * mapZoom}
+            y={10 * mapZoom}
+            width={40 * mapZoom}
+            height={20 * mapZoom}
+          >
+            <TerritoryControl territory={territory} />
+          </foreignObject>
+        )}
+      </g>
+    );
   };
-  
+
+  // Render agent
+  const renderAgent = (agent: any) => {
+    // Find the territory where the agent is located
+    const territory = territories.find((t) => t.name === agent.location);
+    if (!territory) return null;
+
+    const { x, y } = hexToPixel(territory.q, territory.r, 30 * mapZoom);
+    const adjustedX = x + mapOffset.x;
+    const adjustedY = y + mapOffset.y;
+
+    // Calculate position offset based on number of agents in the territory
+    const agentsInTerritory = agents.filter(
+      (a) => a.location === territory.name
+    );
+    const agentIndex = agentsInTerritory.findIndex((a) => a.id === agent.id);
+    const angleOffset = (agentIndex * 2 * Math.PI) / agentsInTerritory.length;
+    const radius = 20 * mapZoom;
+    const offsetX = radius * Math.cos(angleOffset);
+    const offsetY = radius * Math.sin(angleOffset);
+
+    // Determine agent color based on status
+    let agentColor = "#ffffff";
+    if (agent.status === "active") {
+      agentColor = "#4ade80"; // green-400
+    } else if (agent.status === "deploying") {
+      agentColor = "#facc15"; // yellow-400
+    } else if (agent.status === "returning") {
+      agentColor = "#60a5fa"; // blue-400
+    } else if (agent.status === "cooldown") {
+      agentColor = "#f87171"; // red-400
+    }
+
+    // Determine agent icon based on type
+    let agentIcon = "●";
+    switch (agent.type) {
+      case "scout":
+        agentIcon = "👁️";
+        break;
+      case "defense":
+        agentIcon = "🛡️";
+        break;
+      case "trader":
+        agentIcon = "💼";
+        break;
+      case "resource":
+        agentIcon = "⛏️";
+        break;
+      default:
+        agentIcon = "●";
+    }
+
+    return (
+      <g
+        key={`agent-${agent.id}`}
+        transform={`translate(${adjustedX + offsetX}, ${adjustedY + offsetY})`}
+        onClick={(e) => handleAgentClick(agent, e)}
+        style={{ cursor: "pointer" }}
+      >
+        <circle
+          r={8 * mapZoom}
+          fill={agentColor}
+          stroke="#000"
+          strokeWidth={1 * mapZoom}
+        />
+        <text
+          textAnchor="middle"
+          dominantBaseline="middle"
+          fontSize={10 * mapZoom}
+        >
+          {agentIcon}
+        </text>
+        {selectedAgent && selectedAgent.id === agent.id && (
+          <>
+            <circle
+              r={12 * mapZoom}
+              fill="none"
+              stroke="#f59e0b"
+              strokeWidth={2 * mapZoom}
+              strokeDasharray="4,4"
+            />
+            <foreignObject
+              x={15 * mapZoom}
+              y={-40 * mapZoom}
+              width={150 * mapZoom}
+              height={80 * mapZoom}
+            >
+              <div className="bg-gray-900 bg-opacity-90 p-2 rounded text-white text-xs">
+                <div className="font-bold">{agent.name}</div>
+                <div>Type: {agent.type}</div>
+                <div>Status: {agent.status}</div>
+                <div>Task: {agent.task}</div>
+                {agent.status === "active" && (
+                  <button
+                    className="mt-1 px-2 py-1 bg-red-600 text-white rounded text-xs"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleRecallAgent(agent.id);
+                    }}
+                  >
+                    Recall
+                  </button>
+                )}
+              </div>
+            </foreignObject>
+          </>
+        )}
+      </g>
+    );
+  };
+
   return (
     <div className="min-h-screen bg-dark-blue text-light-gray flex flex-col scrollable-y">
       {/* Header */}
-      <div className="bg-dark-gray p-4 border-b border-neon-blue">
-        <div className="container mx-auto flex justify-between items-center">
-          <h1 className="text-2xl font-cyber text-neon-blue">NEXUS SYNDICATES: GAME MAP</h1>
-          <div className="flex items-center space-x-4">
-            <button 
-              onClick={() => navigate('/dashboard')}
-              className="text-neon-green hover:text-neon-blue transition-colors"
-            >
-              Back to Dashboard
-            </button>
-            <AptosWalletConnect onWalletConnect={handleWalletConnect} />
-          </div>
-        </div>
-      </div>
-      
+      <Navbar
+        onWalletConnect={(address: string) =>
+          console.log("Wallet connected:", address)
+        }
+        title="TERRITORIES"
+      />
+
       {/* Map Controls */}
-      <div className="bg-dark-gray bg-opacity-70 p-2">
-        <div className="container mx-auto flex justify-between items-center">
+      <div className="bg-dark-gray bg-opacity-90 p-2 sticky top-16 z-40 border-b border-neon-blue">
+        <div className="container mx-auto flex flex-wrap justify-between items-center gap-2">
           <div className="flex space-x-2">
-            <button 
-              onClick={handleZoomIn}
-              className="p-2 bg-dark-blue border border-neon-blue text-neon-blue hover:bg-neon-blue hover:bg-opacity-20 transition-colors"
+            <button
+              onClick={() => setMapZoom(Math.min(mapZoom * 1.2, 3))}
+              className="p-2 bg-dark-blue border border-neon-blue text-neon-blue hover:bg-neon-blue hover:bg-opacity-20 transition-colors rounded"
+              title="Zoom In"
             >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+              <svg
+                className="w-5 h-5"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 6v6m0 0v6m0-6h6m-6 0H6"
+                />
               </svg>
             </button>
-            <button 
-              onClick={handleZoomOut}
-              className="p-2 bg-dark-blue border border-neon-blue text-neon-blue hover:bg-neon-blue hover:bg-opacity-20 transition-colors"
+            <button
+              onClick={() => setMapZoom(Math.max(mapZoom / 1.2, 0.5))}
+              className="p-2 bg-dark-blue border border-neon-blue text-neon-blue hover:bg-neon-blue hover:bg-opacity-20 transition-colors rounded"
+              title="Zoom Out"
             >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 12H6" />
+              <svg
+                className="w-5 h-5"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M18 12H6"
+                />
+              </svg>
+            </button>
+            <button
+              onClick={() => {
+                setMapZoom(1);
+                setMapOffset({ x: 0, y: 0 });
+              }}
+              className="p-2 bg-dark-blue border border-neon-blue text-neon-blue hover:bg-neon-blue hover:bg-opacity-20 transition-colors rounded"
+              title="Reset View"
+            >
+              <svg
+                className="w-5 h-5"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5v-4m0 4h-4m4 0l-5 5"
+                />
               </svg>
             </button>
           </div>
-          
+
           <div className="flex space-x-2">
-            <button 
-              onClick={() => handleOverlayChange('ownership')}
-              className={`p-2 border ${activeOverlay === 'ownership' ? 'bg-neon-blue bg-opacity-20 border-neon-blue text-neon-blue' : 'bg-dark-blue border-gray-600 text-gray-400 hover:text-neon-blue'} transition-colors`}
+            <button
+              onClick={() => setActiveOverlay("ownership")}
+              className={`p-2 border rounded ${
+                activeOverlay === "ownership"
+                  ? "bg-neon-blue bg-opacity-20 border-neon-blue text-neon-blue"
+                  : "bg-dark-blue border-gray-600 text-gray-400 hover:text-neon-blue"
+              } transition-colors`}
             >
               Ownership
             </button>
-            <button 
-              onClick={() => handleOverlayChange('resources')}
-              className={`p-2 border ${activeOverlay === 'resources' ? 'bg-neon-green bg-opacity-20 border-neon-green text-neon-green' : 'bg-dark-blue border-gray-600 text-gray-400 hover:text-neon-green'} transition-colors`}
+            <button
+              onClick={() => setActiveOverlay("resources")}
+              className={`p-2 border rounded ${
+                activeOverlay === "resources"
+                  ? "bg-neon-green bg-opacity-20 border-neon-green text-neon-green"
+                  : "bg-dark-blue border-gray-600 text-gray-400 hover:text-neon-green"
+              } transition-colors`}
             >
               Resources
             </button>
-            <button 
-              onClick={() => handleOverlayChange('agents')}
-              className={`p-2 border ${activeOverlay === 'agents' ? 'bg-neon-purple bg-opacity-20 border-neon-purple text-neon-purple' : 'bg-dark-blue border-gray-600 text-gray-400 hover:text-neon-purple'} transition-colors`}
+            <button
+              onClick={() => setActiveOverlay("agents")}
+              className={`p-2 border rounded ${
+                activeOverlay === "agents"
+                  ? "bg-neon-purple bg-opacity-20 border-neon-purple text-neon-purple"
+                  : "bg-dark-blue border-gray-600 text-gray-400 hover:text-neon-purple"
+              } transition-colors`}
             >
               Agents
             </button>
           </div>
-          
-          <button 
-            onClick={handleAgentDeployment}
-            className="p-2 bg-neon-yellow bg-opacity-20 border border-neon-yellow text-neon-yellow hover:bg-opacity-30 transition-colors"
+
+          <button
+            onClick={() => setShowAgentDeployment(!showAgentDeployment)}
+            className="p-2 bg-neon-yellow bg-opacity-20 border border-neon-yellow text-neon-yellow hover:bg-opacity-30 transition-colors rounded flex items-center gap-2"
           >
-            Deploy Agent
+            <span className="hidden sm:inline">Deploy Agent</span>
+            <span className="inline sm:hidden"></span>
+            <svg
+              className="w-5 h-5"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 9v3m0 0v3m0-3h3m-3 0H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z"
+              />
+            </svg>
           </button>
         </div>
       </div>
-      
-      {/* Main Map Area */}
-      <div className="flex-grow relative overflow-hidden scrollable-x">
-        <div 
-          className="absolute inset-0 scrollable-x scrollable"
-          style={{
-            transform: `scale(${mapZoom}) translate(${mapOffset.x}px, ${mapOffset.y}px)`,
-            transformOrigin: 'center',
-            transition: 'transform 0.3s ease'
-          }}
-        >
-          {/* Hex Grid */}
-          <svg width="100%" height="100%" viewBox="-500 -500 1000 1000">
-            {/* Grid background */}
-            <rect x="-500" y="-500" width="1000" height="1000" fill="#0a0a1b" />
-            
-            {/* Territories */}
-            {mockTerritories.map(territory => {
-              const { x, y } = hexToPixel(territory.q, territory.r, 50);
-              const ownerColor = territory.owner === 'player' ? '#00ffff' : territory.owner === 'rival' ? '#ff00ff' : '#00ff00';
-              
-              return (
-                <g 
-                  key={territory.id} 
-                  transform={`translate(${x}, ${y})`}
-                  onClick={() => handleTerritorySelect(territory)}
-                  style={{ cursor: 'pointer' }}
+
+      {/* Game Layout - Split View */}
+      <div className="flex flex-col md:flex-row flex-grow h-[calc(100vh-8rem)]">
+        {/* Main Map Area */}
+        <div className="flex-grow relative overflow-hidden">
+          <div
+            className="absolute inset-0 cursor-move"
+            style={{
+              transform: `scale(${mapZoom}) translate(${mapOffset.x}px, ${mapOffset.y}px)`,
+              transformOrigin: "center",
+              transition: "transform 0.3s ease",
+            }}
+            onMouseDown={(e) => {
+              const startX = e.clientX;
+              const startY = e.clientY;
+              const startOffsetX = mapOffset.x;
+              const startOffsetY = mapOffset.y;
+
+              const handleMouseMove = (moveEvent: MouseEvent) => {
+                const dx = moveEvent.clientX - startX;
+                const dy = moveEvent.clientY - startY;
+                setMapOffset({
+                  x: startOffsetX + dx / mapZoom,
+                  y: startOffsetY + dy / mapZoom,
+                });
+              };
+
+              const handleMouseUp = () => {
+                document.removeEventListener("mousemove", handleMouseMove);
+                document.removeEventListener("mouseup", handleMouseUp);
+              };
+
+              document.addEventListener("mousemove", handleMouseMove);
+              document.addEventListener("mouseup", handleMouseUp);
+            }}
+            onWheel={(e) => {
+              e.preventDefault();
+              // Get cursor position relative to the map container
+              const rect = e.currentTarget.getBoundingClientRect();
+              const cursorX = e.clientX - rect.left;
+              const cursorY = e.clientY - rect.top;
+
+              // Calculate the cursor position in the scaled/translated coordinate system
+              const worldX = (cursorX - mapOffset.x * mapZoom) / mapZoom;
+              const worldY = (cursorY - mapOffset.y * mapZoom) / mapZoom;
+
+              // Calculate new zoom level
+              const zoomDelta = e.deltaY < 0 ? 1.1 : 0.9;
+              const newZoom = Math.min(Math.max(mapZoom * zoomDelta, 0.5), 3);
+
+              // Calculate new offset to keep cursor at the same world position
+              const newOffsetX = cursorX / newZoom - worldX;
+              const newOffsetY = cursorY / newZoom - worldY;
+
+              setMapZoom(newZoom);
+              setMapOffset({ x: newOffsetX, y: newOffsetY });
+            }}
+          >
+            <svg
+              width="100%"
+              height="100%"
+              viewBox="-500 -500 1000 1000"
+              className="overflow-visible"
+              style={{ minHeight: "70vh" }}
+            >
+              {/* Grid background */}
+              <defs>
+                <pattern
+                  id="grid"
+                  width="100"
+                  height="100"
+                  patternUnits="userSpaceOnUse"
                 >
-                  <polygon 
-                    points="30,0 15,26 -15,26 -30,0 -15,-26 15,-26" 
-                    fill={territory.status === 'contested' ? '#3a2a3a' : '#1a1a2a'} 
-                    stroke={ownerColor}
-                    strokeWidth="2"
+                  <path
+                    d="M 100 0 L 0 0 0 100"
+                    fill="none"
+                    stroke="#1a2e4a"
+                    strokeWidth="0.5"
                   />
-                  
-                  {activeOverlay === 'resources' && (
-                    <g>
-                      {territory.resources.map((resource, index) => (
-                        <text 
-                          key={index} 
-                          x={index * 15 - 15} 
-                          y="5" 
-                          fontSize="12"
-                          textAnchor="middle"
-                        >
-                          {getResourceIcon(resource)}
-                        </text>
-                      ))}
-                    </g>
-                  )}
-                  
-                  {activeOverlay === 'ownership' && (
-                    <text 
-                      x="0" 
-                      y="5" 
-                      fontSize="10"
-                      fill={ownerColor}
-                      textAnchor="middle"
+                </pattern>
+              </defs>
+              <rect
+                x="-500"
+                y="-500"
+                width="1000"
+                height="1000"
+                fill="url(#grid)"
+              />
+
+              {/* Grid coordinates */}
+              <g>
+                {Array.from({ length: 10 }, (_, i) => (
+                  <React.Fragment key={i}>
+                    <text
+                      x={i * 300 - 1000}
+                      y="-1050"
+                      fill="#3a4a6a"
+                      fontSize="40"
                     >
-                      {territory.owner === 'player' ? 'YOU' : territory.owner === 'rival' ? 'RIVAL' : 'NEUTRAL'}
+                      {i * 300 - 1000}
                     </text>
-                  )}
-                  
-                  {activeOverlay === 'agents' && mockAgents.some(agent => agent.location === territory.name) && (
-                    <g>
-                      {mockAgents
-                        .filter(agent => agent.location === territory.name)
-                        .map((agent, index) => (
-                          <text 
-                            key={agent.id} 
-                            x={index * 15 - 15} 
-                            y="5" 
-                            fontSize="12"
-                            textAnchor="middle"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleAgentSelect(agent);
-                            }}
-                          >
-                            {getAgentIcon(agent.type)}
-                          </text>
-                        ))}
-                    </g>
-                  )}
-                </g>
-              );
-            })}
-          </svg>
-        </div>
-        
-        {/* Territory Info Panel */}
-        {selectedTerritory && (
-          <div className="absolute top-4 right-4 cyber-panel p-4 w-80 scrollable max-h-[50vh]">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-xl font-cyber text-neon-blue">{selectedTerritory.name}</h3>
-              <button 
-                onClick={() => setSelectedTerritory(null)}
-                className="text-neon-blue hover:text-neon-pink"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-            
-            <div className="space-y-3">
-              <div>
-                <span className="text-gray-400">Type:</span>
-                <span className="ml-2 text-neon-green">{selectedTerritory.type}</span>
-              </div>
-              
-              <div>
-                <span className="text-gray-400">Status:</span>
-                <span className={`ml-2 ${selectedTerritory.status === 'contested' ? 'text-neon-pink' : 'text-neon-green'}`}>
-                  {selectedTerritory.status}
-                </span>
-              </div>
-              
-              <div>
-                <span className="text-gray-400">Owner:</span>
-                <span className={`ml-2 ${
-                  selectedTerritory.owner === 'player' 
-                    ? 'text-neon-blue' 
-                    : selectedTerritory.owner === 'rival' 
-                      ? 'text-neon-pink' 
-                      : 'text-neon-green'
-                }`}>
-                  {selectedTerritory.owner === 'player' ? 'You' : selectedTerritory.owner === 'rival' ? 'Rival Syndicate' : 'Neutral'}
-                </span>
-              </div>
-              
-              <div>
-                <span className="text-gray-400">Resources:</span>
-                <div className="mt-1 flex flex-wrap gap-2">
-                  {selectedTerritory.resources.map(resource => (
-                    <span 
-                      key={resource} 
-                      className="px-2 py-1 bg-dark-blue border border-neon-green text-neon-green text-xs rounded"
+                    <text
+                      x="-1050"
+                      y={i * 300 - 1000}
+                      fill="#3a4a6a"
+                      fontSize="40"
                     >
-                      {resource}
-                    </span>
-                  ))}
-                </div>
-              </div>
-              
-              <div className="pt-3 border-t border-gray-700 flex space-x-2">
-                {selectedTerritory.owner === 'player' ? (
-                  <>
-                    <button className="cyber-button-small bg-neon-blue bg-opacity-20 border border-neon-blue text-neon-blue hover:bg-opacity-30">
-                      Deploy Agent
-                    </button>
-                    <button className="cyber-button-small bg-neon-green bg-opacity-20 border border-neon-green text-neon-green hover:bg-opacity-30">
-                      Extract Resources
-                    </button>
-                  </>
-                ) : selectedTerritory.owner === 'neutral' ? (
-                  <button className="cyber-button-small w-full bg-neon-purple bg-opacity-20 border border-neon-purple text-neon-purple hover:bg-opacity-30">
-                    Claim Territory
-                  </button>
-                ) : (
-                  <button className="cyber-button-small w-full bg-neon-pink bg-opacity-20 border border-neon-pink text-neon-pink hover:bg-opacity-30">
-                    Attack Territory
-                  </button>
-                )}
-              </div>
-            </div>
+                      {i * 300 - 1000}
+                    </text>
+                  </React.Fragment>
+                ))}
+              </g>
+
+              {/* Territories */}
+              {territories.map((territory) => renderTerritory(territory))}
+              {agents.map((agent) => renderAgent(agent))}
+            </svg>
           </div>
-        )}
-        
-        {/* Agent Info Panel */}
-        {selectedAgent && (
-          <div className="absolute bottom-4 left-4 cyber-panel p-4 w-80 scrollable max-h-[50vh]">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-xl font-cyber text-neon-purple">{selectedAgent.name}</h3>
-              <button 
-                onClick={() => setSelectedAgent(null)}
-                className="text-neon-blue hover:text-neon-pink"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-            
-            <div className="space-y-3">
-              <div>
-                <span className="text-gray-400">Type:</span>
-                <span className="ml-2 text-neon-green">{selectedAgent.type}</span>
+
+          {/* Territory Tooltip */}
+          {showTooltip && hoveredTerritory && (
+            <div
+              className="absolute z-10 bg-dark-gray border border-neon-blue rounded p-2 text-sm pointer-events-none"
+              style={{
+                left: `${tooltipPosition.x}px`,
+                top: `${tooltipPosition.y}px`,
+                transform: "translate(-50%, -100%)",
+                transition: "opacity 0.2s ease",
+                boxShadow: "0 0 10px rgba(66, 153, 225, 0.5)",
+              }}
+            >
+              <div className="font-bold text-neon-blue">
+                {hoveredTerritory.name}
               </div>
-              
-              <div>
-                <span className="text-gray-400">Status:</span>
-                <span className="ml-2 text-neon-blue">{selectedAgent.status}</span>
-              </div>
-              
-              <div>
-                <span className="text-gray-400">Location:</span>
-                <span className="ml-2 text-neon-yellow">{selectedAgent.location}</span>
-              </div>
-              
-              <div>
-                <span className="text-gray-400">Current Task:</span>
-                <span className="ml-2 text-neon-green">{selectedAgent.task}</span>
-              </div>
-              
-              <div className="pt-3 border-t border-gray-700 flex space-x-2">
-                <button className="cyber-button-small bg-neon-blue bg-opacity-20 border border-neon-blue text-neon-blue hover:bg-opacity-30">
-                  Reassign
-                </button>
-                <button className="cyber-button-small bg-neon-green bg-opacity-20 border border-neon-green text-neon-green hover:bg-opacity-30">
-                  Upgrade
-                </button>
-                <button className="cyber-button-small bg-neon-pink bg-opacity-20 border border-neon-pink text-neon-pink hover:bg-opacity-30">
-                  Recall
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-      
-      {/* Agent Deployment Modal */}
-      {showAgentDeployment && (
-        <div className="fixed inset-0 bg-dark-blue bg-opacity-90 z-50 flex items-center justify-center">
-          <div className="cyber-panel max-w-2xl w-full max-h-[80vh] modal-content p-6">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-2xl font-cyber text-neon-purple">DEPLOY AGENT</h2>
-              <button 
-                onClick={handleAgentDeployment}
-                className="text-neon-blue hover:text-neon-pink"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-            
-            <div className="scrollable">
-              {/* Agent deployment form would go here */}
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-gray-400 mb-1">Agent Type</label>
-                  <select className="w-full p-2 bg-dark-gray border border-neon-blue text-light-gray rounded">
-                    <option value="scout">Scout</option>
-                    <option value="defense">Defense</option>
-                    <option value="trader">Trader</option>
-                    <option value="resource">Resource Extractor</option>
-                  </select>
+              <div className="text-gray-300">Type: {hoveredTerritory.type}</div>
+              {hoveredTerritory.resources && (
+                <div className="text-gray-300">
+                  Resources: {hoveredTerritory.resources.join(", ")}
                 </div>
-                
-                <div>
-                  <label className="block text-gray-400 mb-1">Target Territory</label>
-                  <select className="w-full p-2 bg-dark-gray border border-neon-blue text-light-gray rounded">
-                    {mockTerritories
-                      .filter(t => t.owner === 'player')
-                      .map(t => (
-                        <option key={t.id} value={t.name}>{t.name}</option>
-                      ))}
-                  </select>
+              )}
+              {hoveredTerritory.level && (
+                <div className="text-gray-300">
+                  Level: {hoveredTerritory.level}
                 </div>
-                
-                <div>
-                  <label className="block text-gray-400 mb-1">Primary Task</label>
-                  <select className="w-full p-2 bg-dark-gray border border-neon-blue text-light-gray rounded">
-                    <option value="gather">Gather Intelligence</option>
-                    <option value="defend">Defend Territory</option>
-                    <option value="trade">Establish Trade Routes</option>
-                    <option value="extract">Extract Resources</option>
-                  </select>
-                </div>
-                
-                <div className="pt-4 flex justify-end">
-                  <button 
-                    className="cyber-button bg-neon-blue bg-opacity-20 border border-neon-blue text-neon-blue hover:bg-opacity-30"
-                    onClick={handleAgentDeployment}
+              )}
+              <div className="text-gray-300 mt-1">Click to select</div>
+            </div>
+          )}
+        </div>
+
+        {/* Right Sidebar - Game Info */}
+        <div className="md:w-80 bg-dark-gray bg-opacity-90 border-t md:border-t-0 md:border-l border-neon-blue overflow-y-auto">
+          {/* Territory Info Panel */}
+          {selectedTerritory ? (
+            <div className="p-4 border-b border-neon-blue">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-xl font-cyber text-neon-blue">
+                  {selectedTerritory.name}
+                </h3>
+                <button
+                  onClick={() => setSelectedTerritory(null)}
+                  className="text-neon-blue hover:text-neon-pink"
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    className="h-5 w-5"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
                   >
-                    Deploy Agent
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M6 18L18 6M6 6l12 12"
+                    />
+                  </svg>
+                </button>
+              </div>
+
+              <div className="space-y-3">
+                <div>
+                  <span className="text-gray-400">Type:</span>
+                  <span className="ml-2 text-neon-green">
+                    {selectedTerritory.type}
+                  </span>
+                </div>
+
+                <div>
+                  <span className="text-gray-400">Status:</span>
+                  <span
+                    className={`ml-2 ${
+                      selectedTerritory.status === "contested"
+                        ? "text-neon-pink"
+                        : "text-neon-green"
+                    }`}
+                  >
+                    {selectedTerritory.status}
+                  </span>
+                </div>
+
+                <div>
+                  <span className="text-gray-400">Owner:</span>
+                  <span
+                    className={`ml-2 ${
+                      selectedTerritory.owner === "player"
+                        ? "text-neon-blue"
+                        : selectedTerritory.owner === "rival"
+                        ? "text-neon-pink"
+                        : "text-neon-green"
+                    }`}
+                  >
+                    {selectedTerritory.owner === "player"
+                      ? "You"
+                      : selectedTerritory.owner === "rival"
+                      ? "Rival Syndicate"
+                      : "Neutral"}
+                  </span>
+                </div>
+
+                <div>
+                  <span className="text-gray-400">Resources:</span>
+                  <div className="mt-1 flex flex-wrap gap-2">
+                    {selectedTerritory.resources.map((resource, index) => (
+                      <div
+                        key={index}
+                        className="bg-dark-blue p-1 rounded border border-neon-green"
+                      >
+                        <span>
+                          {getResourceIcon(resource)} {resource}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="pt-3 flex flex-col gap-2">
+                  {selectedTerritory.owner === "player" ? (
+                    <>
+                      <button
+                        onClick={() => extractResources(selectedTerritory.id)}
+                        className="w-full p-2 bg-neon-green bg-opacity-20 border border-neon-green text-neon-green hover:bg-opacity-30 transition-colors rounded"
+                      >
+                        Extract Resources
+                      </button>
+                      <button
+                        onClick={() => handleAgentDeployment()}
+                        className="w-full p-2 bg-neon-blue bg-opacity-20 border border-neon-blue text-neon-blue hover:bg-opacity-30 transition-colors rounded"
+                      >
+                        Deploy Agent
+                      </button>
+                    </>
+                  ) : selectedTerritory.owner === "neutral" ? (
+                    <button
+                      onClick={() => handleClaimTerritory()}
+                      className="w-full p-2 bg-neon-blue bg-opacity-20 border border-neon-blue text-neon-blue hover:bg-opacity-30 transition-colors rounded"
+                    >
+                      Claim Territory
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => handleAttackTerritory()}
+                      className="w-full p-2 bg-neon-pink bg-opacity-20 border border-neon-pink text-neon-pink hover:bg-opacity-30 transition-colors rounded"
+                    >
+                      Attack Territory
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="p-4 text-center border-b border-neon-blue">
+              <p className="text-gray-400">
+                Select a territory to view details
+              </p>
+            </div>
+          )}
+
+          {/* Game Events Feed */}
+          <div className="p-4">
+            <h3 className="text-lg font-cyber text-neon-purple mb-3">
+              Recent Events
+            </h3>
+            <div className="space-y-2 max-h-[30vh] overflow-y-auto pr-2">
+              {gameEvents.length > 0 ? (
+                gameEvents.map((event) => (
+                  <div
+                    key={event.id}
+                    className={`p-2 border-l-4 ${
+                      event.type === "territory_attack" ||
+                      event.type === "alliance_offer"
+                        ? "border-neon-pink bg-neon-pink bg-opacity-10"
+                        : event.type === "resource_extract"
+                        ? "border-neon-green bg-neon-green bg-opacity-10"
+                        : "border-neon-blue bg-neon-blue bg-opacity-10"
+                    } text-sm`}
+                  >
+                    <div className="flex justify-between">
+                      <span className="text-light-gray">{event.message}</span>
+                      <span className="text-gray-500 text-xs">
+                        {new Date(event.timestamp).toLocaleTimeString()}
+                      </span>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <p className="text-gray-500 text-center">No recent events</p>
+              )}
+            </div>
+          </div>
+
+          {/* Agent Info */}
+          {selectedAgent && (
+            <div className="p-4 border-t border-neon-blue">
+              <div className="flex justify-between items-center mb-3">
+                <h3 className="text-lg font-cyber text-neon-purple">
+                  Agent Details
+                </h3>
+                <button
+                  onClick={() => setSelectedAgent(null)}
+                  className="text-neon-blue hover:text-neon-pink"
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    className="h-5 w-5"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M6 18L18 6M6 6l12 12"
+                    />
+                  </svg>
+                </button>
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center">
+                  <span className="text-2xl mr-2">
+                    {getAgentIcon(selectedAgent.type)}
+                  </span>
+                  <div>
+                    <div className="text-neon-blue">{selectedAgent.name}</div>
+                    <div className="text-xs text-gray-400">
+                      {selectedAgent.type} agent
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <span className="text-gray-400">Location:</span>
+                  <span className="ml-2 text-light-gray">
+                    {selectedAgent.location}
+                  </span>
+                </div>
+
+                <div>
+                  <span className="text-gray-400">Task:</span>
+                  <span className="ml-2 text-neon-green">
+                    {selectedAgent.task}
+                  </span>
+                </div>
+
+                <div>
+                  <span className="text-gray-400">Status:</span>
+                  <span
+                    className={`ml-2 ${
+                      selectedAgent.status === "active"
+                        ? "text-neon-blue"
+                        : selectedAgent.status === "deploying"
+                        ? "text-neon-yellow"
+                        : "text-neon-red"
+                    }`}
+                  >
+                    {selectedAgent.status}
+                  </span>
+                </div>
+
+                <div className="pt-2">
+                  <button
+                    className="w-full p-2 bg-neon-red bg-opacity-20 border border-neon-red text-neon-red hover:bg-opacity-30 transition-colors rounded"
+                    onClick={() => handleRecallAgent(selectedAgent.id)}
+                    disabled={selectedAgent.status === "recalling"}
+                  >
+                    {selectedAgent.status === "recalling"
+                      ? "Recalling..."
+                      : "Recall Agent"}
                   </button>
                 </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Agent Deployment Modal */}
+      {showAgentDeployment && selectedTerritory && (
+        <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 p-4">
+          <div className="bg-dark-gray border-2 border-neon-blue rounded-lg p-6 w-full max-w-md">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-xl font-cyber text-neon-blue">
+                Deploy Agent
+              </h3>
+              <button
+                onClick={() => setShowAgentDeployment(false)}
+                className="text-neon-blue hover:text-neon-pink"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="h-6 w-6"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M6 18L18 6M6 6l12 12"
+                  />
+                </svg>
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-light-gray mb-2">
+                  Target Territory
+                </label>
+                <div className="p-2 border border-neon-blue rounded bg-dark-blue">
+                  {selectedTerritory.name}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-light-gray mb-2">Agent Type</label>
+                <select
+                  value={agentType}
+                  onChange={(e) => setAgentType(e.target.value)}
+                  className="w-full p-2 bg-dark-blue border border-neon-blue rounded text-light-gray focus:outline-none focus:ring-2 focus:ring-neon-purple"
+                >
+                  <option value="scout">
+                    Scout (50 credits, 5 data shards)
+                  </option>
+                  <option value="defense">
+                    Defense (100 credits, 10 synthetic alloys)
+                  </option>
+                  <option value="trader">
+                    Trader (150 credits, 5 quantum cores)
+                  </option>
+                  <option value="resource">
+                    Resource (200 credits, 10 data shards, 5 alloys)
+                  </option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-light-gray mb-2">Task</label>
+                <select
+                  value={agentTask}
+                  onChange={(e) => setAgentTask(e.target.value)}
+                  className="w-full p-2 bg-dark-blue border border-neon-blue rounded text-light-gray focus:outline-none focus:ring-2 focus:ring-neon-purple"
+                >
+                  <option value="gather">Gather Intelligence</option>
+                  <option value="defend">Defend Territory</option>
+                  <option value="sabotage">Sabotage Operations</option>
+                  <option value="extract">Extract Resources</option>
+                </select>
+              </div>
+
+              <div className="pt-2">
+                <button
+                  className="w-full p-3 bg-neon-blue bg-opacity-20 border border-neon-blue text-neon-blue hover:bg-opacity-30 transition-colors rounded font-cyber"
+                  onClick={() => handleAgentDeployment()}
+                >
+                  DEPLOY AGENT
+                </button>
               </div>
             </div>
           </div>

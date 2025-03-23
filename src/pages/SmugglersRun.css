@@ -1,0 +1,138 @@
+.smugglers-run-container {
+  background-color: #0a0a2a;
+  background-image: 
+    linear-gradient(0deg, rgba(0, 255, 255, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 255, 255, 0.05) 1px, transparent 1px);
+  background-size: 50px 50px;
+  background-position: center center;
+}
+
+.game-canvas-container {
+  position: relative;
+  overflow: hidden;
+}
+
+canvas {
+  display: block;
+  image-rendering: pixelated;
+}
+
+.shadow-neon-blue {
+  box-shadow: 0 0 15px rgba(0, 255, 255, 0.7);
+}
+
+.cloaked {
+  filter: hue-rotate(180deg) brightness(0.8) contrast(1.2);
+  animation: cloak-pulse 0.5s infinite alternate;
+}
+
+@keyframes cloak-pulse {
+  from {
+    opacity: 0.7;
+  }
+  to {
+    opacity: 0.9;
+  }
+}
+
+.pause-overlay {
+  backdrop-filter: blur(3px);
+}
+
+.notification-badge {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  width: 18px;
+  height: 18px;
+  background-color: #ff3e3e;
+  color: white;
+  border-radius: 50%;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 0 5px rgba(255, 62, 62, 0.7);
+}
+
+/* Mobile controls */
+@media (max-width: 768px) {
+  .game-controls {
+    flex-direction: column;
+    align-items: center;
+  }
+  
+  .game-controls button {
+    margin-bottom: 10px;
+  }
+}
+
+/* Cyberpunk UI elements */
+.cyber-button {
+  background-color: rgba(0, 0, 0, 0.7);
+  border: 2px solid;
+  padding: 8px 16px;
+  font-family: 'Orbitron', sans-serif;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  position: relative;
+  overflow: hidden;
+  transition: all 0.3s;
+  cursor: pointer;
+}
+
+.cyber-button:before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.2),
+    transparent
+  );
+  transition: all 0.6s;
+}
+
+.cyber-button:hover:before {
+  left: 100%;
+}
+
+.cyber-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.cyber-button-small {
+  font-size: 0.8rem;
+  padding: 5px 10px;
+}
+
+/* Game HUD elements */
+.hud-element {
+  background-color: rgba(0, 0, 0, 0.7);
+  border: 1px solid #0ff;
+  padding: 5px 10px;
+  font-family: 'Orbitron', sans-serif;
+  font-size: 0.9rem;
+  color: #0ff;
+  display: inline-block;
+  margin-right: 10px;
+}
+
+/* Animations */
+@keyframes neon-glow {
+  0% {
+    text-shadow: 0 0 5px rgba(0, 255, 255, 0.7), 0 0 10px rgba(0, 255, 255, 0.5);
+  }
+  100% {
+    text-shadow: 0 0 10px rgba(0, 255, 255, 0.9), 0 0 20px rgba(0, 255, 255, 0.7), 0 0 30px rgba(0, 255, 255, 0.5);
+  }
+}
+
+.text-glow {
+  animation: neon-glow 1.5s infinite alternate;
+}
