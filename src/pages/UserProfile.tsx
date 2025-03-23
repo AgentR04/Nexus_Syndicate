@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import Navbar from '../components/common/Navbar';
 
 interface Achievement {
   id: number;
@@ -23,7 +22,11 @@ interface Badge {
   rarity: string;
 }
 
-const UserProfile: React.FC = () => {
+interface UserProfileProps {
+  onLogout?: () => void;
+}
+
+const UserProfile: React.FC<UserProfileProps> = ({ onLogout }) => {
   const navigate = useNavigate();
   const [walletAddress, setWalletAddress] = useState<string>('');
   const [activeTab, setActiveTab] = useState<string>('profile');
@@ -149,6 +152,14 @@ const UserProfile: React.FC = () => {
     setWalletAddress(address);
   };
   
+  const handleLogout = () => {
+    // Call the parent's logout function if provided
+    if (onLogout) {
+      onLogout();
+    }
+    // The App component will handle navigation to sign-in page
+  };
+  
   const handleTabChange = (tab: string) => {
     setActiveTab(tab);
   };
@@ -205,9 +216,6 @@ const UserProfile: React.FC = () => {
   
   return (
     <div className="min-h-screen bg-dark-blue text-light-gray">
-      {/* Header */}
-      <Navbar onWalletConnect={handleWalletConnect} walletAddress={walletAddress} />
-      
       {/* Main Content */}
       <div className="container mx-auto p-4 mt-6">
         <div className="grid grid-cols-12 gap-6">
@@ -250,6 +258,13 @@ const UserProfile: React.FC = () => {
                 className="cyber-button-small bg-neon-blue bg-opacity-20 border border-neon-blue text-neon-blue hover:bg-opacity-30 w-full"
               >
                 {editMode ? 'Cancel Edit' : 'Edit Profile'}
+              </button>
+              
+              <button
+                onClick={handleLogout}
+                className="cyber-button-small bg-neon-pink bg-opacity-20 border border-neon-pink text-neon-pink hover:bg-opacity-30 w-full mt-3"
+              >
+                LOG OUT
               </button>
             </div>
             

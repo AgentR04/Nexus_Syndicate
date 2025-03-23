@@ -32,6 +32,10 @@ const Navbar: React.FC<NavbarProps> = ({
     return location.pathname === path;
   };
 
+  const toggleMobileMenu = () => {
+    setMobileMenuOpen(!mobileMenuOpen);
+  };
+
   return (
     <header className="bg-dark-gray border-b border-neon-blue p-4 sticky top-0 z-50">
       <div className="container mx-auto flex justify-between items-center">
@@ -148,6 +152,60 @@ const Navbar: React.FC<NavbarProps> = ({
             </div>
           ) : null} */}
         </div>
+
+        {/* Mobile Navigation */}
+        {mobileMenuOpen && (
+          <div className="md:hidden mt-4 border-t border-gray-700 pt-4">
+            <nav className="flex flex-col space-y-4">
+              <Link 
+                to="/dashboard" 
+                className={`${isActive('/dashboard') ? 'text-neon-blue font-cyber' : 'text-light-gray hover:text-neon-blue'} transition-colors font-cyber`}
+                onClick={() => setMobileMenuOpen(false)}
+              >
+                Dashboard
+              </Link>
+              <Link 
+                to="/map" 
+                className={`${isActive('/map') ? 'text-neon-blue font-cyber' : 'text-light-gray hover:text-neon-blue'} transition-colors font-cyber`}
+                onClick={() => setMobileMenuOpen(false)}
+              >
+                Game Map
+              </Link>
+              <Link 
+                to="/marketplace" 
+                className={`${isActive('/marketplace') ? 'text-neon-blue font-cyber' : 'text-light-gray hover:text-neon-blue'} transition-colors font-cyber`}
+                onClick={() => setMobileMenuOpen(false)}
+              >
+                Marketplace
+              </Link>
+              <Link 
+                to="/syndicate-management" 
+                className={`${isActive('/syndicate-management') ? 'text-neon-blue font-cyber' : 'text-light-gray hover:text-neon-blue'} transition-colors font-cyber`}
+                onClick={() => setMobileMenuOpen(false)}
+              >
+                Syndicate
+              </Link>
+              <Link 
+                to="/profile" 
+                className={`${isActive('/profile') ? 'text-neon-blue font-cyber' : 'text-light-gray hover:text-neon-blue'} transition-colors font-cyber`}
+                onClick={() => setMobileMenuOpen(false)}
+              >
+                Profile
+              </Link>
+              
+              {/* Wallet Connection (Mobile) */}
+              <div className="pt-2">
+                {!walletAddress ? (
+                  <AptosWalletConnect onWalletConnect={onWalletConnect} />
+                ) : (
+                  <div className="text-neon-green font-cyber text-sm">
+                    {`${walletAddress.substring(0, 6)}...${walletAddress.substring(walletAddress.length - 4)}`}
+                  </div>
+                )}
+              </div>
+            </nav>
+          </div>
+        )}
       </div>
     </header>
   );
