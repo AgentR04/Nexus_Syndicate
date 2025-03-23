@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import Navbar from '../components/common/Navbar';
 
 const HowToPlay: React.FC = () => {
   const navigate = useNavigate();
@@ -172,12 +171,16 @@ const HowToPlay: React.FC = () => {
   
   return (
     <div className="min-h-screen bg-dark-blue text-light-gray scrollable">
-      {/* Header */}
-      <Navbar onWalletConnect={handleWalletConnect} walletAddress={walletAddress} />
-      
       {/* Main Content */}
       <div className="container mx-auto p-4 mt-6">
-        <div className="cyber-panel p-6">
+        <div className="cyber-panel p-6 relative">
+          <button 
+            onClick={() => navigate('/dashboard')}
+            className="absolute top-4 right-4 w-8 h-8 flex items-center justify-center bg-dark-gray hover:bg-neon-pink text-neon-pink hover:text-dark-gray rounded-full transition-colors"
+            aria-label="Close"
+          >
+            ✕
+          </button>
           <h2 className="text-3xl font-cyber text-neon-purple mb-6">HOW TO PLAY</h2>
           
           <div className="grid grid-cols-1 md:grid-cols-4 gap-6">

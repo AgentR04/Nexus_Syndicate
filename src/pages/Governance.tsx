@@ -272,7 +272,7 @@ const Governance: React.FC = () => {
               GOVERNANCE <span className="text-neon-blue">PANEL</span>
             </h1>
             {syndicateInfo && (
-              <p className="text-light-gray">
+              <p className="text-light-gray font-cyber">
                 Syndicate: <span className="text-neon-blue">{syndicateInfo.name}</span> | 
                 Members: <span className="text-neon-green">{syndicateInfo.memberCount}</span>
               </p>
@@ -281,7 +281,7 @@ const Governance: React.FC = () => {
           <div className="flex items-center space-x-4 mt-4 md:mt-0">
             <button 
               onClick={() => navigate('/syndicate-management')}
-              className="cyber-button bg-opacity-20 text-glow-blue"
+              className="cyber-button bg-opacity-20 text-glow-blue font-cyber"
             >
               <span className="mr-2">◀</span> Back to Syndicates
             </button>
@@ -297,13 +297,13 @@ const Governance: React.FC = () => {
               {/* Tabs */}
               <div className="flex border-b border-neon-blue mb-4">
                 <button
-                  className={`marketplace-tab px-4 py-2 ${activeTab === 'active' ? 'active text-neon-blue' : 'text-light-gray'}`}
+                  className={`marketplace-tab px-4 py-2 font-cyber ${activeTab === 'active' ? 'active text-neon-blue' : 'text-light-gray'}`}
                   onClick={() => setActiveTab('active')}
                 >
                   Active Proposals
                 </button>
                 <button
-                  className={`marketplace-tab px-4 py-2 ${activeTab === 'past' ? 'active text-neon-blue' : 'text-light-gray'}`}
+                  className={`marketplace-tab px-4 py-2 font-cyber ${activeTab === 'past' ? 'active text-neon-blue' : 'text-light-gray'}`}
                   onClick={() => setActiveTab('past')}
                 >
                   Past Proposals
@@ -328,29 +328,29 @@ const Governance: React.FC = () => {
               </div>
               
               {/* Proposal list */}
-              <div className="space-y-4 overflow-y-auto max-h-[60vh]">
+              <div className="space-y-4 overflow-y-auto max-h-[60vh] custom-scrollbar">
                 {filteredProposals.length > 0 ? (
                   filteredProposals.map(proposal => (
                     <div
                       key={proposal.id}
-                      className={`cyber-resource-box cursor-pointer transition-all ${selectedProposal?.id === proposal.id ? 'border-neon-purple' : ''}`}
+                      className={`cyber-resource-box cursor-pointer transition-all hover:border-neon-purple ${selectedProposal?.id === proposal.id ? 'border-neon-purple' : ''}`}
                       onClick={() => setSelectedProposal(proposal)}
                     >
                       <div className="flex justify-between items-center">
                         <h3 className="text-xl font-cyber text-neon-blue truncate">{proposal.title}</h3>
-                        <span className={`text-xs px-2 py-1 rounded ${
+                        <span className={`text-xs px-2 py-1 rounded font-cyber ${
                           proposal.status === 'active' 
                             ? 'bg-neon-blue bg-opacity-20 text-neon-blue' 
                             : proposal.status === 'passed'
                               ? 'bg-neon-green bg-opacity-20 text-neon-green'
                               : 'bg-neon-red bg-opacity-20 text-neon-red'
                         }`}>
-                          {proposal.status}
+                          {proposal.status.toUpperCase()}
                         </span>
                       </div>
                       <p className="text-light-gray text-sm mt-1 line-clamp-2">{proposal.description}</p>
                       <div className="flex justify-between mt-2">
-                        <span className="text-xs text-neon-purple">{proposal.category}</span>
+                        <span className="text-xs text-neon-purple font-cyber">{proposal.category.toUpperCase()}</span>
                         <span className="text-xs text-light-gray">
                           {proposal.status === 'active' 
                             ? `Ends: ${proposal.endTime}` 
@@ -376,20 +376,20 @@ const Governance: React.FC = () => {
                 <div className="mb-6">
                   <div className="flex justify-between items-start">
                     <h2 className="text-2xl font-cyber text-neon-purple">{selectedProposal.title}</h2>
-                    <span className={`text-xs px-2 py-1 rounded ${
+                    <span className={`text-xs px-2 py-1 rounded font-cyber ${
                       selectedProposal.status === 'active' 
                         ? 'bg-neon-blue bg-opacity-20 text-neon-blue' 
                         : selectedProposal.status === 'passed'
                           ? 'bg-neon-green bg-opacity-20 text-neon-green'
                           : 'bg-neon-red bg-opacity-20 text-neon-red'
                     }`}>
-                      {selectedProposal.status}
+                      {selectedProposal.status.toUpperCase()}
                     </span>
                   </div>
                   <div className="flex space-x-4 text-sm text-light-gray mt-2">
                     <span>Created by: {selectedProposal.creator}</span>
                     <span>Date: {selectedProposal.createdAt}</span>
-                    <span>Category: <span className="text-neon-purple">{selectedProposal.category}</span></span>
+                    <span>Category: <span className="text-neon-purple font-cyber">{selectedProposal.category.toUpperCase()}</span></span>
                   </div>
                   <p className="text-light-gray mt-4">{selectedProposal.description}</p>
                 </div>
@@ -400,15 +400,15 @@ const Governance: React.FC = () => {
                   
                   <div className="grid grid-cols-3 gap-4 mb-4">
                     <div className="cyber-stat-box">
-                      <h4 className="text-sm text-light-gray">For</h4>
+                      <h4 className="text-sm text-light-gray font-cyber">FOR</h4>
                       <p className="text-2xl font-cyber text-neon-green">{selectedProposal.votesFor}</p>
                     </div>
                     <div className="cyber-stat-box">
-                      <h4 className="text-sm text-light-gray">Against</h4>
+                      <h4 className="text-sm text-light-gray font-cyber">AGAINST</h4>
                       <p className="text-2xl font-cyber text-neon-red">{selectedProposal.votesAgainst}</p>
                     </div>
                     <div className="cyber-stat-box">
-                      <h4 className="text-sm text-light-gray">Abstain</h4>
+                      <h4 className="text-sm text-light-gray font-cyber">ABSTAIN</h4>
                       <p className="text-2xl font-cyber text-neon-blue">{selectedProposal.votesAbstain}</p>
                     </div>
                   </div>
@@ -421,7 +421,7 @@ const Governance: React.FC = () => {
                         <>
                           <div>
                             <div className="flex justify-between text-xs mb-1">
-                              <span className="text-neon-green">For</span>
+                              <span className="text-neon-green font-cyber">FOR</span>
                               <span className="text-light-gray">{percentages.for}%</span>
                             </div>
                             <div className="w-full bg-dark-gray rounded-full h-2">
@@ -433,7 +433,7 @@ const Governance: React.FC = () => {
                           </div>
                           <div>
                             <div className="flex justify-between text-xs mb-1">
-                              <span className="text-neon-red">Against</span>
+                              <span className="text-neon-red font-cyber">AGAINST</span>
                               <span className="text-light-gray">{percentages.against}%</span>
                             </div>
                             <div className="w-full bg-dark-gray rounded-full h-2">
@@ -445,7 +445,7 @@ const Governance: React.FC = () => {
                           </div>
                           <div>
                             <div className="flex justify-between text-xs mb-1">
-                              <span className="text-neon-blue">Abstain</span>
+                              <span className="text-neon-blue font-cyber">ABSTAIN</span>
                               <span className="text-light-gray">{percentages.abstain}%</span>
                             </div>
                             <div className="w-full bg-dark-gray rounded-full h-2">
@@ -466,31 +466,31 @@ const Governance: React.FC = () => {
                   <div className="mt-6 text-center">
                     <button
                       onClick={() => setShowVoteModal(true)}
-                      className="cyber-button bg-neon-purple bg-opacity-20 text-neon-purple"
+                      className="cyber-button bg-neon-purple bg-opacity-20 text-neon-purple font-cyber"
                     >
-                      <span className="mr-2">🗳️</span> Cast Your Vote
+                      <span className="mr-2">🗳️</span> CAST YOUR VOTE
                     </button>
                   </div>
                 )}
                 
                 {selectedProposal.status === 'active' && selectedProposal.hasVoted === true && (
                   <div className="mt-6 text-center">
-                    <p className="text-neon-green">You have already voted on this proposal</p>
+                    <p className="text-neon-green font-cyber">YOU HAVE ALREADY VOTED ON THIS PROPOSAL</p>
                   </div>
                 )}
               </div>
             ) : (
               <div className="cyber-panel p-8 h-full flex flex-col items-center justify-center">
                 <div className="text-6xl mb-4">🗳️</div>
-                <h3 className="text-xl font-cyber text-neon-blue mb-2">Select a Proposal</h3>
+                <h3 className="text-xl font-cyber text-neon-blue mb-2">SELECT A PROPOSAL</h3>
                 <p className="text-light-gray text-center max-w-md">
                   Choose a proposal from the list to view details, or create a new proposal to influence the direction of your syndicate.
                 </p>
                 <button
-                  className="mt-6 cyber-button bg-neon-purple bg-opacity-20 text-neon-purple"
+                  className="mt-6 cyber-button bg-neon-purple bg-opacity-20 text-neon-purple font-cyber"
                   onClick={() => setShowCreateModal(true)}
                 >
-                  Create New Proposal
+                  CREATE NEW PROPOSAL
                 </button>
               </div>
             )}
@@ -502,12 +502,22 @@ const Governance: React.FC = () => {
       {showCreateModal && (
         <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50">
           <div className="cyber-panel p-6 max-w-md w-full modal-content">
-            <h2 className="text-2xl font-cyber text-neon-purple mb-4">
-              CREATE <span className="text-neon-blue">PROPOSAL</span>
-            </h2>
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-2xl font-cyber text-neon-purple">
+                CREATE <span className="text-neon-blue">PROPOSAL</span>
+              </h2>
+              <button 
+                onClick={() => setShowCreateModal(false)}
+                className="text-neon-blue hover:text-neon-purple transition-colors"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
             <div className="space-y-4">
               <div>
-                <label className="block text-light-gray mb-1">Title</label>
+                <label className="block text-light-gray mb-1 font-cyber">TITLE</label>
                 <input 
                   type="text" 
                   className="w-full p-2 bg-dark-gray border border-neon-blue text-light-gray rounded"
@@ -517,9 +527,9 @@ const Governance: React.FC = () => {
                 />
               </div>
               <div>
-                <label className="block text-light-gray mb-1">Description</label>
+                <label className="block text-light-gray mb-1 font-cyber">DESCRIPTION</label>
                 <textarea 
-                  className="w-full p-2 bg-dark-gray border border-neon-blue text-light-gray rounded"
+                  className="w-full p-2 bg-dark-gray border border-neon-blue text-light-gray rounded custom-scrollbar"
                   placeholder="Enter proposal description"
                   rows={4}
                   value={newProposalDescription}
@@ -528,7 +538,7 @@ const Governance: React.FC = () => {
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-light-gray mb-1">Category</label>
+                  <label className="block text-light-gray mb-1 font-cyber">CATEGORY</label>
                   <select 
                     className="w-full p-2 bg-dark-gray border border-neon-blue text-light-gray rounded"
                     value={newProposalCategory}
@@ -541,7 +551,7 @@ const Governance: React.FC = () => {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-light-gray mb-1">Duration (days)</label>
+                  <label className="block text-light-gray mb-1 font-cyber">DURATION (DAYS)</label>
                   <input 
                     type="number" 
                     className="w-full p-2 bg-dark-gray border border-neon-blue text-light-gray rounded"
@@ -581,17 +591,27 @@ const Governance: React.FC = () => {
       {showVoteModal && selectedProposal && (
         <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50">
           <div className="cyber-panel p-6 max-w-md w-full modal-content">
-            <h2 className="text-2xl font-cyber text-neon-purple mb-4">
-              CAST <span className="text-neon-blue">VOTE</span>
-            </h2>
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-2xl font-cyber text-neon-purple">
+                CAST <span className="text-neon-blue">VOTE</span>
+              </h2>
+              <button 
+                onClick={() => setShowVoteModal(false)}
+                className="text-neon-blue hover:text-neon-purple transition-colors"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
             <div className="mb-4">
-              <h3 className="text-xl text-neon-blue">{selectedProposal.title}</h3>
+              <h3 className="text-xl text-neon-blue font-cyber">{selectedProposal.title}</h3>
             </div>
             <div className="space-y-4">
               <div>
-                <label className="block text-light-gray mb-2">Select your vote:</label>
+                <label className="block text-light-gray mb-2 font-cyber">SELECT YOUR VOTE:</label>
                 <div className="space-y-2">
-                  <div className="flex items-center">
+                  <div className="flex items-center p-2 border border-transparent hover:border-neon-green rounded transition-colors">
                     <input 
                       type="radio" 
                       id="vote-for" 
@@ -600,9 +620,9 @@ const Governance: React.FC = () => {
                       checked={voteType === 'for'}
                       onChange={() => setVoteType('for')}
                     />
-                    <label htmlFor="vote-for" className="text-neon-green">Vote For</label>
+                    <label htmlFor="vote-for" className="text-neon-green font-cyber">VOTE FOR</label>
                   </div>
-                  <div className="flex items-center">
+                  <div className="flex items-center p-2 border border-transparent hover:border-neon-red rounded transition-colors">
                     <input 
                       type="radio" 
                       id="vote-against" 
@@ -611,9 +631,9 @@ const Governance: React.FC = () => {
                       checked={voteType === 'against'}
                       onChange={() => setVoteType('against')}
                     />
-                    <label htmlFor="vote-against" className="text-neon-red">Vote Against</label>
+                    <label htmlFor="vote-against" className="text-neon-red font-cyber">VOTE AGAINST</label>
                   </div>
-                  <div className="flex items-center">
+                  <div className="flex items-center p-2 border border-transparent hover:border-neon-blue rounded transition-colors">
                     <input 
                       type="radio" 
                       id="vote-abstain" 
@@ -622,7 +642,7 @@ const Governance: React.FC = () => {
                       checked={voteType === 'abstain'}
                       onChange={() => setVoteType('abstain')}
                     />
-                    <label htmlFor="vote-abstain" className="text-neon-blue">Abstain</label>
+                    <label htmlFor="vote-abstain" className="text-neon-blue font-cyber">ABSTAIN</label>
                   </div>
                 </div>
               </div>

@@ -314,13 +314,18 @@ const SyndicateManagement: React.FC = () => {
       <div className="max-w-7xl mx-auto">
         {/* Header */}
         <div className="flex flex-col md:flex-row justify-between items-center mb-6">
-          <h1 className="text-3xl font-cyber text-neon-purple mb-4 md:mb-0">
-            SYNDICATE <span className="text-neon-blue">MANAGEMENT</span>
-          </h1>
-          <div className="flex items-center space-x-4">
+          <div>
+            <h1 className="text-3xl font-cyber text-neon-purple mb-2">
+              SYNDICATE <span className="text-neon-blue">MANAGEMENT</span>
+            </h1>
+            <p className="text-light-gray font-cyber">
+              Create, join, and manage your alliances in the cyberpunk world
+            </p>
+          </div>
+          <div className="flex items-center space-x-4 mt-4 md:mt-0">
             <button 
               onClick={() => navigate('/dashboard')}
-              className="cyber-button bg-opacity-20 text-glow-blue"
+              className="cyber-button bg-opacity-20 text-glow-blue font-cyber"
             >
               <span className="mr-2">◀</span> Back to Dashboard
             </button>
@@ -336,13 +341,13 @@ const SyndicateManagement: React.FC = () => {
               {/* Tabs */}
               <div className="flex border-b border-neon-blue mb-4">
                 <button
-                  className={`marketplace-tab px-4 py-2 ${activeTab === 'mySyndicates' ? 'active text-neon-blue' : 'text-light-gray'}`}
+                  className={`marketplace-tab px-4 py-2 font-cyber ${activeTab === 'mySyndicates' ? 'active text-neon-blue' : 'text-light-gray'}`}
                   onClick={() => setActiveTab('mySyndicates')}
                 >
                   My Syndicates
                 </button>
                 <button
-                  className={`marketplace-tab px-4 py-2 ${activeTab === 'allSyndicates' ? 'active text-neon-blue' : 'text-light-gray'}`}
+                  className={`marketplace-tab px-4 py-2 font-cyber ${activeTab === 'allSyndicates' ? 'active text-neon-blue' : 'text-light-gray'}`}
                   onClick={() => setActiveTab('allSyndicates')}
                 >
                   All Syndicates
@@ -362,45 +367,35 @@ const SyndicateManagement: React.FC = () => {
                   className="px-4 py-2 bg-neon-purple text-dark-blue hover:bg-neon-purple-bright transition-colors rounded-r font-cyber"
                   onClick={() => setShowCreateModal(true)}
                 >
-                  CREATE
+                  NEW
                 </button>
               </div>
               
               {/* Syndicate list */}
-              <div className="space-y-4 overflow-y-auto max-h-[60vh]">
+              <div className="space-y-4 overflow-y-auto max-h-[60vh] custom-scrollbar">
                 {filteredSyndicates.length > 0 ? (
                   filteredSyndicates.map(syndicate => (
                     <div
                       key={syndicate.id}
-                      className={`cyber-resource-box cursor-pointer transition-all ${selectedSyndicate?.id === syndicate.id ? 'border-neon-purple' : ''}`}
-                      onClick={() => handleViewSyndicate(syndicate)}
+                      className={`cyber-resource-box cursor-pointer transition-all hover:border-neon-purple ${selectedSyndicate?.id === syndicate.id ? 'border-neon-purple' : ''}`}
+                      onClick={() => setSelectedSyndicate(syndicate)}
                     >
                       <div className="flex justify-between items-center">
                         <h3 className="text-xl font-cyber text-neon-blue">{syndicate.name}</h3>
-                        <span className="text-sm text-light-gray">{syndicate.memberCount} members</span>
+                        <span className={`text-xs px-2 py-1 rounded font-cyber ${syndicate.isJoined ? 'bg-neon-green bg-opacity-20 text-neon-green' : 'bg-neon-blue bg-opacity-20 text-neon-blue'}`}>
+                          {syndicate.isJoined ? 'JOINED' : 'OPEN'}
+                        </span>
                       </div>
                       <p className="text-light-gray text-sm mt-1 line-clamp-2">{syndicate.description}</p>
                       <div className="flex justify-between mt-2">
-                        <span className="text-sm text-neon-green">{syndicate.territories} territories</span>
-                        {syndicate.isJoined ? (
-                          <span className="text-xs px-2 py-1 bg-neon-blue bg-opacity-20 text-neon-blue rounded">Joined</span>
-                        ) : (
-                          <button
-                            className="text-xs px-2 py-1 bg-neon-purple bg-opacity-20 text-neon-purple rounded hover:bg-opacity-40"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleJoinSyndicate(syndicate.id);
-                            }}
-                          >
-                            Join
-                          </button>
-                        )}
+                        <span className="text-xs text-neon-purple font-cyber">MEMBERS: {syndicate.memberCount}</span>
+                        <span className="text-xs text-light-gray">TERRITORIES: {syndicate.territories}</span>
                       </div>
                     </div>
                   ))
                 ) : (
                   <div className="text-center py-8 text-light-gray">
-                    {activeTab === 'mySyndicates' ? 'You haven\'t joined any syndicates yet.' : 'No syndicates found.'}
+                    {activeTab === 'mySyndicates' ? 'You have not joined any syndicates yet.' : 'No syndicates found.'}
                   </div>
                 )}
               </div>
@@ -412,82 +407,72 @@ const SyndicateManagement: React.FC = () => {
             {selectedSyndicate ? (
               <div className="cyber-panel p-4 h-full">
                 {/* Syndicate header */}
-                <div className="flex justify-between items-start mb-6">
-                  <div>
+                <div className="mb-6">
+                  <div className="flex justify-between items-start">
                     <h2 className="text-2xl font-cyber text-neon-purple">{selectedSyndicate.name}</h2>
-                    <p className="text-light-gray mt-1">{selectedSyndicate.description}</p>
+                    <span className={`text-xs px-2 py-1 rounded font-cyber ${selectedSyndicate.isJoined ? 'bg-neon-green bg-opacity-20 text-neon-green' : 'bg-neon-blue bg-opacity-20 text-neon-blue'}`}>
+                      {selectedSyndicate.isJoined ? 'JOINED' : 'OPEN'}
+                    </span>
                   </div>
-                  <div className="flex space-x-2">
-                    {selectedSyndicate.isJoined && (
-                      <button
-                        className="cyber-button-small bg-neon-blue bg-opacity-20 text-neon-blue"
-                        onClick={() => setShowInviteModal(true)}
-                      >
-                        Invite Member
-                      </button>
-                    )}
-                    {selectedSyndicate.isJoined ? (
-                      <button
-                        className="cyber-button-small bg-neon-red bg-opacity-20 text-neon-red"
-                        onClick={() => handleLeaveSyndicate(selectedSyndicate.id)}
-                      >
-                        Leave Syndicate
-                      </button>
-                    ) : (
-                      <button
-                        className="cyber-button-small bg-neon-purple bg-opacity-20 text-neon-purple"
-                        onClick={() => handleJoinSyndicate(selectedSyndicate.id)}
-                      >
-                        Join Syndicate
-                      </button>
-                    )}
+                  <p className="text-light-gray mt-2">{selectedSyndicate.description}</p>
+                  <div className="flex space-x-4 text-sm text-light-gray mt-4">
+                    <span>Leader: {selectedSyndicate.leader}</span>
+                    <span>Members: {selectedSyndicate.memberCount}</span>
+                    <span>Territories: {selectedSyndicate.territories}</span>
                   </div>
                 </div>
                 
                 {/* Syndicate stats */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-                  <div className="cyber-stat-box">
-                    <h4 className="text-sm text-light-gray">Members</h4>
-                    <p className="text-2xl font-cyber text-neon-blue">{selectedSyndicate.memberCount}</p>
-                  </div>
-                  <div className="cyber-stat-box">
-                    <h4 className="text-sm text-light-gray">Credits</h4>
-                    <p className="text-2xl font-cyber text-neon-green">{selectedSyndicate.resources.credits.toLocaleString()}</p>
-                  </div>
-                  <div className="cyber-stat-box">
-                    <h4 className="text-sm text-light-gray">Territories</h4>
-                    <p className="text-2xl font-cyber text-neon-purple">{selectedSyndicate.territories}</p>
+                <div className="mb-6">
+                  <h3 className="text-xl font-cyber text-neon-blue mb-4">SYNDICATE RESOURCES</h3>
+                  
+                  <div className="grid grid-cols-2 gap-4 mb-4">
+                    <div className="cyber-stat-box">
+                      <h4 className="text-sm text-light-gray font-cyber">CREDITS</h4>
+                      <p className="text-2xl font-cyber text-neon-green">{selectedSyndicate.resources.credits}</p>
+                    </div>
+                    <div className="cyber-stat-box">
+                      <h4 className="text-sm text-light-gray font-cyber">INFLUENCE</h4>
+                      <p className="text-2xl font-cyber text-neon-blue">{selectedSyndicate.resources.influence}</p>
+                    </div>
                   </div>
                 </div>
                 
-                {/* Members list */}
-                <div>
-                  <h3 className="text-xl font-cyber text-neon-blue mb-4">Members</h3>
+                {/* Member list */}
+                <div className="mb-6">
+                  <div className="flex justify-between items-center mb-4">
+                    <h3 className="text-xl font-cyber text-neon-blue">MEMBERS</h3>
+                    {selectedSyndicate.isJoined && (
+                      <button
+                        onClick={() => setShowInviteModal(true)}
+                        className="px-3 py-1 bg-neon-purple text-dark-blue hover:bg-neon-purple-bright transition-colors rounded text-sm font-cyber"
+                      >
+                        INVITE
+                      </button>
+                    )}
+                  </div>
+                  
                   <div className="overflow-x-auto">
-                    <table className="w-full">
+                    <table className="min-w-full">
                       <thead>
                         <tr className="border-b border-neon-blue">
-                          <th className="text-left py-2 text-light-gray">Name</th>
-                          <th className="text-left py-2 text-light-gray">Role</th>
-                          <th className="text-left py-2 text-light-gray">Joined</th>
-                          <th className="text-left py-2 text-light-gray">Contribution</th>
-                          <th className="text-left py-2 text-light-gray">Status</th>
+                          <th className="py-2 text-left text-neon-blue font-cyber">NAME</th>
+                          <th className="py-2 text-left text-neon-blue font-cyber">ROLE</th>
+                          <th className="py-2 text-left text-neon-blue font-cyber">JOINED</th>
+                          <th className="py-2 text-left text-neon-blue font-cyber">CONTRIBUTION</th>
+                          <th className="py-2 text-left text-neon-blue font-cyber">STATUS</th>
                         </tr>
                       </thead>
                       <tbody>
                         {members.map(member => (
                           <tr key={member.id} className="border-b border-dark-gray">
-                            <td className="py-3 text-neon-blue">{member.name}</td>
-                            <td className="py-3 text-light-gray">{member.role}</td>
-                            <td className="py-3 text-light-gray">{member.joinedDate}</td>
-                            <td className="py-3 text-neon-green">{member.contribution} CR</td>
-                            <td className="py-3">
-                              <span className={`px-2 py-1 rounded text-xs ${
-                                member.status === 'active' 
-                                  ? 'bg-neon-green bg-opacity-20 text-neon-green' 
-                                  : 'bg-neon-red bg-opacity-20 text-neon-red'
-                              }`}>
-                                {member.status}
+                            <td className="py-2 text-light-gray">{member.name}</td>
+                            <td className="py-2 text-light-gray font-cyber">{member.role.toUpperCase()}</td>
+                            <td className="py-2 text-light-gray">{member.joinedDate}</td>
+                            <td className="py-2 text-neon-green">{member.contribution}</td>
+                            <td className="py-2">
+                              <span className={`px-2 py-1 rounded text-xs font-cyber ${member.status === 'active' ? 'bg-neon-green bg-opacity-20 text-neon-green' : 'bg-neon-red bg-opacity-20 text-neon-red'}`}>
+                                {member.status.toUpperCase()}
                               </span>
                             </td>
                           </tr>
@@ -497,30 +482,45 @@ const SyndicateManagement: React.FC = () => {
                   </div>
                 </div>
                 
-                {/* Governance link */}
-                {selectedSyndicate.isJoined && (
-                  <div className="mt-6 text-center">
+                {/* Action buttons */}
+                <div className="flex flex-wrap gap-4 justify-center mt-6">
+                  {selectedSyndicate.isJoined ? (
+                    <>
+                      <button
+                        onClick={() => navigate(`/governance/${selectedSyndicate.id}`)}
+                        className="cyber-button bg-neon-blue bg-opacity-20 text-neon-blue font-cyber"
+                      >
+                        <span className="mr-2">🏛️</span> GOVERNANCE PANEL
+                      </button>
+                      <button
+                        onClick={() => handleLeaveSyndicate(selectedSyndicate.id)}
+                        className="cyber-button bg-neon-red bg-opacity-20 text-neon-red font-cyber"
+                      >
+                        <span className="mr-2">🚪</span> LEAVE SYNDICATE
+                      </button>
+                    </>
+                  ) : (
                     <button
-                      onClick={() => navigate(`/governance/${selectedSyndicate.id}`)}
-                      className="cyber-button bg-neon-purple bg-opacity-20 text-neon-purple"
+                      onClick={() => handleJoinSyndicate(selectedSyndicate.id)}
+                      className="cyber-button bg-neon-green bg-opacity-20 text-neon-green font-cyber"
                     >
-                      <span className="mr-2">🗳️</span> Access Governance Panel
+                      <span className="mr-2">➕</span> JOIN SYNDICATE
                     </button>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
             ) : (
               <div className="cyber-panel p-8 h-full flex flex-col items-center justify-center">
                 <div className="text-6xl mb-4">👥</div>
-                <h3 className="text-xl font-cyber text-neon-blue mb-2">Select a Syndicate</h3>
+                <h3 className="text-xl font-cyber text-neon-blue mb-2">SELECT A SYNDICATE</h3>
                 <p className="text-light-gray text-center max-w-md">
-                  Choose a syndicate from the list to view details, or create your own syndicate to start building your network.
+                  Choose a syndicate from the list to view details, or create a new syndicate to start building your alliance.
                 </p>
                 <button
-                  className="mt-6 cyber-button bg-neon-purple bg-opacity-20 text-neon-purple"
+                  className="mt-6 cyber-button bg-neon-purple bg-opacity-20 text-neon-purple font-cyber"
                   onClick={() => setShowCreateModal(true)}
                 >
-                  Create New Syndicate
+                  CREATE NEW SYNDICATE
                 </button>
               </div>
             )}
@@ -532,12 +532,22 @@ const SyndicateManagement: React.FC = () => {
       {showCreateModal && (
         <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50">
           <div className="cyber-panel p-6 max-w-md w-full modal-content">
-            <h2 className="text-2xl font-cyber text-neon-purple mb-4">
-              CREATE <span className="text-neon-blue">SYNDICATE</span>
-            </h2>
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-2xl font-cyber text-neon-purple">
+                CREATE <span className="text-neon-blue">SYNDICATE</span>
+              </h2>
+              <button 
+                onClick={() => setShowCreateModal(false)}
+                className="text-neon-blue hover:text-neon-purple transition-colors"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
             <div className="space-y-4">
               <div>
-                <label className="block text-light-gray mb-1">Syndicate Name</label>
+                <label className="block text-light-gray mb-1 font-cyber">NAME</label>
                 <input 
                   type="text" 
                   className="w-full p-2 bg-dark-gray border border-neon-blue text-light-gray rounded"
@@ -547,9 +557,9 @@ const SyndicateManagement: React.FC = () => {
                 />
               </div>
               <div>
-                <label className="block text-light-gray mb-1">Description</label>
+                <label className="block text-light-gray mb-1 font-cyber">DESCRIPTION</label>
                 <textarea 
-                  className="w-full p-2 bg-dark-gray border border-neon-blue text-light-gray rounded"
+                  className="w-full p-2 bg-dark-gray border border-neon-blue text-light-gray rounded custom-scrollbar"
                   placeholder="Enter syndicate description"
                   rows={4}
                   value={newSyndicateDescription}
@@ -585,12 +595,22 @@ const SyndicateManagement: React.FC = () => {
       {showInviteModal && (
         <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50">
           <div className="cyber-panel p-6 max-w-md w-full modal-content">
-            <h2 className="text-2xl font-cyber text-neon-purple mb-4">
-              INVITE <span className="text-neon-blue">MEMBER</span>
-            </h2>
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-2xl font-cyber text-neon-purple">
+                INVITE <span className="text-neon-blue">MEMBER</span>
+              </h2>
+              <button 
+                onClick={() => setShowInviteModal(false)}
+                className="text-neon-blue hover:text-neon-purple transition-colors"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
             <div className="space-y-4">
               <div>
-                <label className="block text-light-gray mb-1">Wallet Address</label>
+                <label className="block text-light-gray mb-1 font-cyber">WALLET ADDRESS</label>
                 <input 
                   type="text" 
                   className="w-full p-2 bg-dark-gray border border-neon-blue text-light-gray rounded"
@@ -600,7 +620,7 @@ const SyndicateManagement: React.FC = () => {
                 />
               </div>
               <div>
-                <label className="block text-light-gray mb-1">Role</label>
+                <label className="block text-light-gray mb-1 font-cyber">ROLE</label>
                 <select 
                   className="w-full p-2 bg-dark-gray border border-neon-blue text-light-gray rounded"
                   value={inviteRole}
