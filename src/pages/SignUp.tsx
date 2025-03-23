@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import AptosWalletConnect from '../components/common/AptosWalletConnect';
+import AvatarSelection, { Avatar } from '../components/ui/AvatarSelection';
 import FactionSelection, { Faction } from '../components/ui/FactionSelection';
 import PlaystyleSelection, { Playstyle } from '../components/ui/PlaystyleSelection';
-import AvatarSelection, { Avatar } from '../components/ui/AvatarSelection';
 
 interface FormData {
   name: string;

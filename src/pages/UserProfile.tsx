@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Navbar from '../components/common/Navbar';
-import AptosWalletConnect from '../components/common/AptosWalletConnect';
 
 interface Achievement {
   id: number;
