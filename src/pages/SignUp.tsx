@@ -153,7 +153,9 @@ const SignUp: React.FC<SignUpProps> = ({ onSignUp }) => {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (validateStep(currentStep)) {
+    
+    // Only proceed if we're on the final step and all validations pass
+    if (currentStep === 4 && validateStep(currentStep)) {
       // Submit form
       console.log("Form submitted:", formData);
 
@@ -162,8 +164,11 @@ const SignUp: React.FC<SignUpProps> = ({ onSignUp }) => {
         onSignUp(formData.gameName);
       }
 
-      // Navigate to How To Play page after successful signup
-      navigate("/howtoplay");
+      // Navigate to Dashboard page after successful signup
+      navigate("/dashboard");
+    } else {
+      // If not on the final step, just go to the next step
+      handleNextStep();
     }
   };
 
@@ -222,7 +227,7 @@ const SignUp: React.FC<SignUpProps> = ({ onSignUp }) => {
                 name="name"
                 value={formData.name}
                 onChange={handleInputChange}
-                className="cyber-input w-full"
+                className="cyber-input w-full text-black"
                 placeholder="Enter your full name"
               />
               {errors.name && (
@@ -243,7 +248,7 @@ const SignUp: React.FC<SignUpProps> = ({ onSignUp }) => {
                 name="gameName"
                 value={formData.gameName}
                 onChange={handleInputChange}
-                className="cyber-input w-full"
+                className="cyber-input w-full text-black"
                 placeholder="Choose your in-game name"
               />
               {errors.gameName && (
@@ -264,7 +269,7 @@ const SignUp: React.FC<SignUpProps> = ({ onSignUp }) => {
                 name="email"
                 value={formData.email}
                 onChange={handleInputChange}
-                className="cyber-input w-full"
+                className="cyber-input w-full text-black"
                 placeholder="Enter your email address"
               />
               {errors.email && (
@@ -285,7 +290,7 @@ const SignUp: React.FC<SignUpProps> = ({ onSignUp }) => {
                 name="dob"
                 value={formData.dob}
                 onChange={handleInputChange}
-                className="cyber-input w-full"
+                className="cyber-input w-full text-black"
                 max={
                   new Date(
                     new Date().setFullYear(new Date().getFullYear() - 18)

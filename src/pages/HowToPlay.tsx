@@ -17,7 +17,7 @@ const HowToPlay: React.FC = () => {
       title: "Getting Started",
       content: (
         <>
-          <h3 className="text-xl font-cyber text-neon-green mb-4">
+          <h3 className="text-xl font-cyber text-accent mb-4">
             Welcome to Nexus Syndicates
           </h3>
           <p className="mb-4">
@@ -26,7 +26,7 @@ const HowToPlay: React.FC = () => {
             syndicate, deploy AI agents, control territories, and trade
             resources to become the most powerful faction in the digital realm.
           </p>
-          <h4 className="text-lg font-cyber text-neon-blue mb-2">
+          <h4 className="text-lg font-cyber text-primary mb-2">
             First Steps
           </h4>
           <ol className="list-decimal pl-5 space-y-2 mb-4">
@@ -44,7 +44,7 @@ const HowToPlay: React.FC = () => {
             <li>Visit the Game Map to see the territories you can control.</li>
           </ol>
           <div className="cyber-panel p-4 mb-4">
-            <h4 className="text-lg font-cyber text-neon-yellow mb-2">
+            <h4 className="text-lg font-cyber text-warning mb-2">
               Quick Tip
             </h4>
             <p>
@@ -61,7 +61,7 @@ const HowToPlay: React.FC = () => {
       title: "Territories & Control",
       content: (
         <>
-          <h3 className="text-xl font-cyber text-neon-green mb-4">
+          <h3 className="text-xl font-cyber text-accent mb-4">
             Understanding Territories
           </h3>
           <p className="mb-4">
@@ -70,32 +70,32 @@ const HowToPlay: React.FC = () => {
             Controlling territories is essential for resource generation and
             syndicate growth.
           </p>
-          <h4 className="text-lg font-cyber text-neon-blue mb-2">
+          <h4 className="text-lg font-cyber text-primary mb-2">
             Territory Types
           </h4>
           <ul className="list-disc pl-5 space-y-2 mb-4">
             <li>
-              <span className="text-neon-blue">Urban</span> - Balanced resource
+              <span className="text-primary">Urban</span> - Balanced resource
               generation, easier to defend
             </li>
             <li>
-              <span className="text-neon-green">Research</span> - High quantum
+              <span className="text-success">Research</span> - High quantum
               cores and data shards production
             </li>
             <li>
-              <span className="text-neon-purple">Industrial</span> - High
+              <span className="text-purple">Industrial</span> - High
               synthetic alloys production
             </li>
             <li>
-              <span className="text-neon-yellow">Commercial</span> - High
+              <span className="text-warning">Commercial</span> - High
               credits generation
             </li>
             <li>
-              <span className="text-neon-pink">Black Market</span> - Random
+              <span className="text-pink">Black Market</span> - Random
               resource drops, high risk/reward
             </li>
           </ul>
-          <h4 className="text-lg font-cyber text-neon-blue mb-2">
+          <h4 className="text-lg font-cyber text-primary mb-2">
             Claiming Territories
           </h4>
           <p className="mb-4">To claim a territory:</p>
@@ -122,7 +122,7 @@ const HowToPlay: React.FC = () => {
       title: "AI Agents",
       content: (
         <>
-          <h3 className="text-xl font-cyber text-neon-green mb-4">
+          <h3 className="text-xl font-cyber text-accent mb-4">
             AI Agents System
           </h3>
           <p className="mb-4">
@@ -130,33 +130,33 @@ const HowToPlay: React.FC = () => {
             across the network. Different agent types specialize in various
             activities, from resource gathering to territory defense.
           </p>
-          <h4 className="text-lg font-cyber text-neon-blue mb-2">
+          <h4 className="text-lg font-cyber text-primary mb-2">
             Agent Types
           </h4>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-            <div className="border border-neon-blue p-3 rounded-lg">
-              <h5 className="font-cyber text-neon-blue">Scout Agents 🔍</h5>
+            <div className="border border-primary p-3 rounded-lg">
+              <h5 className="font-cyber text-primary">Scout Agents 🔍</h5>
               <p>
                 Gather intelligence and discover new territories. Essential for
                 expansion.
               </p>
             </div>
-            <div className="border border-neon-pink p-3 rounded-lg">
-              <h5 className="font-cyber text-neon-pink">Defense Agents 🛡️</h5>
+            <div className="border border-pink p-3 rounded-lg">
+              <h5 className="font-cyber text-pink">Defense Agents 🛡️</h5>
               <p>
                 Protect your territories from rival syndicates. Higher levels
                 improve defense.
               </p>
             </div>
-            <div className="border border-neon-green p-3 rounded-lg">
-              <h5 className="font-cyber text-neon-green">Resource Agents ⛏️</h5>
+            <div className="border border-success p-3 rounded-lg">
+              <h5 className="font-cyber text-success">Resource Agents ⛏️</h5>
               <p>
                 Enhance resource extraction from territories. Boost production
                 rates.
               </p>
             </div>
-            <div className="border border-neon-yellow p-3 rounded-lg">
-              <h5 className="font-cyber text-neon-yellow">Trader Agents 💹</h5>
+            <div className="border border-warning p-3 rounded-lg">
+              <h5 className="font-cyber text-warning">Trader Agents 💹</h5>
               <p>
                 Automate resource trading and market analysis. Increase profit
                 margins.
@@ -171,7 +171,7 @@ const HowToPlay: React.FC = () => {
       title: "Resources & Economy",
       content: (
         <>
-          <h3 className="text-xl font-cyber text-neon-green mb-4">
+          <h3 className="text-xl font-cyber text-accent mb-4">
             Resource System
           </h3>
           <p className="mb-4">
@@ -179,14 +179,14 @@ const HowToPlay: React.FC = () => {
             resources. Managing these resources effectively is crucial for your
             syndicate's growth and power.
           </p>
-          <h4 className="text-lg font-cyber text-neon-blue mb-2">
+          <h4 className="text-lg font-cyber text-primary mb-2">
             Resource Types
           </h4>
           <div className="space-y-4 mb-4">
             <div className="flex items-center space-x-3">
               <span className="text-2xl">💰</span>
               <div>
-                <h5 className="font-cyber text-neon-yellow">Credits</h5>
+                <h5 className="font-cyber text-warning">Credits</h5>
                 <p className="text-sm">
                   The basic currency. Used for most transactions, agent
                   deployment, and upgrades.
@@ -196,7 +196,7 @@ const HowToPlay: React.FC = () => {
             <div className="flex items-center space-x-3">
               <span className="text-2xl">💾</span>
               <div>
-                <h5 className="font-cyber text-neon-blue">Data Shards</h5>
+                <h5 className="font-cyber text-primary">Data Shards</h5>
                 <p className="text-sm">
                   Digital information fragments. Used for research, agent
                   upgrades, and territory scanning.
@@ -206,7 +206,7 @@ const HowToPlay: React.FC = () => {
             <div className="flex items-center space-x-3">
               <span className="text-2xl">🔩</span>
               <div>
-                <h5 className="font-cyber text-neon-purple">
+                <h5 className="font-cyber text-purple">
                   Synthetic Alloys
                 </h5>
                 <p className="text-sm">
@@ -218,7 +218,7 @@ const HowToPlay: React.FC = () => {
             <div className="flex items-center space-x-3">
               <span className="text-2xl">⚛️</span>
               <div>
-                <h5 className="font-cyber text-neon-green">Quantum Cores</h5>
+                <h5 className="font-cyber text-success">Quantum Cores</h5>
                 <p className="text-sm">
                   Rare and powerful. Used for the most advanced technologies and
                   special operations.
@@ -234,7 +234,7 @@ const HowToPlay: React.FC = () => {
       title: "Syndicates & Alliances",
       content: (
         <>
-          <h3 className="text-xl font-cyber text-neon-green mb-4">
+          <h3 className="text-xl font-cyber text-accent mb-4">
             Syndicate System
           </h3>
           <p className="mb-4">
@@ -243,7 +243,7 @@ const HowToPlay: React.FC = () => {
             syndicate provides significant advantages in territory control and
             resource generation.
           </p>
-          <h4 className="text-lg font-cyber text-neon-blue mb-2">
+          <h4 className="text-lg font-cyber text-primary mb-2">
             Syndicate Benefits
           </h4>
           <ul className="list-disc pl-5 space-y-2 mb-4">
@@ -269,7 +269,13 @@ const HowToPlay: React.FC = () => {
 
       {/* Main Content */}
       <div className="container mx-auto p-4 mt-6">
-        <div className="cyber-panel p-6">
+        <div className="cyber-panel p-6 relative">
+          <button 
+            onClick={() => navigate('/dashboard')} 
+            className="absolute top-4 right-4 px-3 py-1 bg-dark-gray border border-neon-red text-neon-red hover:bg-neon-red hover:text-dark-gray transition-colors rounded"
+          >
+            Close
+          </button>
           <h2 className="text-3xl font-cyber text-neon-purple mb-6">
             HOW TO PLAY
           </h2>

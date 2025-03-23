@@ -54,7 +54,7 @@ code {
   left: -2px;
   right: -2px;
   bottom: -2px;
-  background: linear-gradient(45deg, var(--neon-blue), var(--neon-purple), var(--neon-pink), var(--neon-blue));
+  background: linear-gradient(45deg, var(--neon-blue), var(--neon-purple), var(--neon-blue), var(--neon-blue));
   z-index: -1;
   animation: border-flow 3s linear infinite;
 }

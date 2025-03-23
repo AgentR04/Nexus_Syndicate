@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import Navbar from '../components/common/Navbar';
 
 interface Achievement {
   id: number;
@@ -216,6 +217,7 @@ const UserProfile: React.FC<UserProfileProps> = ({ onLogout }) => {
   
   return (
     <div className="min-h-screen bg-dark-blue text-light-gray">
+      <Navbar />
       {/* Main Content */}
       <div className="container mx-auto p-4 mt-6">
         <div className="grid grid-cols-12 gap-6">

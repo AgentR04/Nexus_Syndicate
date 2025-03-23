@@ -78,11 +78,18 @@ const AvatarSelection: React.FC<AvatarSelectionProps> = ({ onSelect, selectedAva
               key={avatar.id}
               className={`cyber-panel cursor-pointer transition-all duration-300 ${
                 isSelected ? rarityColor : ''
-              } ${isHovered ? 'scale-105' : 'scale-100'}`}
+              } ${isHovered ? 'scale-105' : 'scale-100'} relative`}
               onClick={() => onSelect(avatar)}
               onMouseEnter={() => setHoveredAvatar(avatar.id)}
               onMouseLeave={() => setHoveredAvatar(null)}
             >
+              {isSelected && (
+                <div className="absolute top-2 right-2 bg-neon-green text-dark-blue rounded-full w-6 h-6 flex items-center justify-center z-10">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                  </svg>
+                </div>
+              )}
               <div className="flex flex-col items-center">
                 <div className={`w-24 h-24 rounded-full bg-dark-blue flex items-center justify-center overflow-hidden border-2 ${rarityColor} mb-2`}>
                   <img 
