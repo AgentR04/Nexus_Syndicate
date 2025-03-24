@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { UIAvatar, DEFAULT_AVATARS } from '../../services/gameDataTypes';
 
 export interface Avatar {
   id: string;
@@ -7,77 +8,38 @@ export interface Avatar {
   rarity: 'common' | 'rare' | 'epic' | 'legendary';
 }
 
-// Sample avatars - in a real implementation, these would be loaded from an API
-const avatars: Avatar[] = [
-  {
-    id: 'avatar-1',
-    name: 'Neon Ronin',
-    image: '/avatar1.png',
-    rarity: 'common'
-  },
-  {
-    id: 'avatar-2',
-    name: 'Digital Samurai',
-    image: '/avatar2.png',
-    rarity: 'common'
-  },
-  {
-    id: 'avatar-3',
-    name: 'Cyber Huntress',
-    image: '/avatar3.png',
-    rarity: 'rare'
-  },
-  {
-    id: 'avatar-4',
-    name: 'Ghost Protocol',
-    image: '/avatar4.png',
-    rarity: 'rare'
-  },
-  {
-    id: 'avatar-5',
-    name: 'Neural Phantom',
-    image: '/avatar5.png',
-    rarity: 'epic'
-  },
-  {
-    id: 'avatar-6',
-    name: 'Quantum Shadow',
-    image: '/avatar6.png',
-    rarity: 'legendary'
-  }
-];
-
 // Color mapping for rarity
 const rarityColors = {
-  common: 'text-white border-white',
-  rare: 'text-neon-blue border-neon-blue',
-  epic: 'text-neon-purple border-neon-purple',
-  legendary: 'text-neon-yellow border-neon-yellow'
+  common: 'text-gray-400',
+  rare: 'text-blue-400',
+  epic: 'text-purple-400',
+  legendary: 'text-yellow-400'
 };
 
 interface AvatarSelectionProps {
-  onSelect: (avatar: Avatar) => void;
+  onSelect: (avatar: UIAvatar) => void;
   selectedAvatarId?: string;
 }
 
 const AvatarSelection: React.FC<AvatarSelectionProps> = ({ onSelect, selectedAvatarId }) => {
   const [hoveredAvatar, setHoveredAvatar] = useState<string | null>(null);
+  const avatars = DEFAULT_AVATARS;
 
   return (
     <div className="w-full">
-      <h3 className="text-xl font-cyber mb-4 text-neon-blue">Choose Your Avatar</h3>
+      <h3 className="text-xl font-cyber mb-4 text-neon-blue">Select Your Avatar</h3>
       
       <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
         {avatars.map((avatar) => {
           const isSelected = selectedAvatarId === avatar.id;
           const isHovered = hoveredAvatar === avatar.id;
-          const rarityColor = rarityColors[avatar.rarity];
+          const rarityColor = rarityColors[avatar.rarity] || 'text-gray-400';
           
           return (
             <div 
               key={avatar.id}
               className={`cyber-panel cursor-pointer transition-all duration-300 ${
-                isSelected ? rarityColor : ''
+                isSelected ? 'border-neon-green shadow-neon-green' : ''
               } ${isHovered ? 'scale-105' : 'scale-100'} relative`}
               onClick={() => onSelect(avatar)}
               onMouseEnter={() => setHoveredAvatar(avatar.id)}
@@ -90,8 +52,9 @@ const AvatarSelection: React.FC<AvatarSelectionProps> = ({ onSelect, selectedAva
                   </svg>
                 </div>
               )}
-              <div className="flex flex-col items-center">
-                <div className={`w-24 h-24 rounded-full bg-dark-blue flex items-center justify-center overflow-hidden border-2 ${rarityColor} mb-2`}>
+              
+              <div className="flex flex-col items-center p-2">
+                <div className="w-20 h-20 rounded-full bg-dark-gray flex items-center justify-center overflow-hidden border-2 border-neon-blue mb-2">
                   <img 
                     src={avatar.image} 
                     alt={avatar.name} 
@@ -99,13 +62,13 @@ const AvatarSelection: React.FC<AvatarSelectionProps> = ({ onSelect, selectedAva
                     onError={(e) => {
                       // Fallback for missing images
                       const target = e.target as HTMLImageElement;
-                      target.src = 'https://via.placeholder.com/96';
+                      target.src = 'https://via.placeholder.com/80';
                     }}
                   />
                 </div>
                 
-                <h4 className={`font-cyber text-center ${rarityColor.split(' ')[0]}`}>{avatar.name}</h4>
-                <span className={`text-xs uppercase ${rarityColor.split(' ')[0]}`}>{avatar.rarity}</span>
+                <h4 className="text-neon-blue font-cyber text-center">{avatar.name}</h4>
+                <span className={`text-xs ${rarityColor} uppercase`}>{avatar.rarity}</span>
               </div>
             </div>
           );

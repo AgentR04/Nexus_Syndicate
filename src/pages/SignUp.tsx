@@ -1,465 +1,492 @@
-import React, { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import AptosWalletConnect from "../components/common/AptosWalletConnect";
-import AvatarSelection, { Avatar } from "../components/ui/AvatarSelection";
-import FactionSelection, { Faction } from "../components/ui/FactionSelection";
-import PlaystyleSelection, {
-  Playstyle,
-} from "../components/ui/PlaystyleSelection";
+import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { toast } from 'react-hot-toast';
+import FactionSelection from '../components/ui/FactionSelection';
+import PlaystyleSelection from '../components/ui/PlaystyleSelection';
+import AvatarSelection from '../components/ui/AvatarSelection';
+import { UIFaction, UIPlaystyle, UIAvatar } from '../services/gameDataTypes';
+import firestoreService from '../services/firestoreService';
+import authService from '../services/authService';
+import { User } from '../models/User';
+import { connectPetraWallet, disconnectPetraWallet, isPetraInstalled } from '../types/wallet';
 
-interface FormData {
-  name: string;
-  gameName: string;
-  email: string;
-  dob: string;
-  walletAddress: string;
-  faction: Faction | null;
-  playstyle: Playstyle | null;
-  avatar: Avatar | null;
+// Form steps
+enum SignUpStep {
+  PERSONAL_INFO = 0,
+  CONNECT_WALLET = 1,
+  FACTION_SELECTION = 2,
+  PLAYSTYLE_SELECTION = 3,
+  AVATAR_SELECTION = 4,
+  REVIEW = 5
 }
 
+// Form data interface
+interface SignUpFormData {
+  username: string;
+  email: string;
+  walletAddress: string;
+  faction?: UIFaction;
+  playstyle?: UIPlaystyle;
+  avatar?: UIAvatar;
+}
+
+// Component props
 interface SignUpProps {
   onSignUp?: (username: string) => void;
 }
 
 const SignUp: React.FC<SignUpProps> = ({ onSignUp }) => {
   const navigate = useNavigate();
-  const [currentStep, setCurrentStep] = useState(1);
-  const [formData, setFormData] = useState<FormData>({
-    name: "",
-    gameName: "",
-    email: "",
-    dob: "",
-    walletAddress: "",
-    faction: null,
-    playstyle: null,
-    avatar: null,
+  const [currentStep, setCurrentStep] = useState<SignUpStep>(SignUpStep.PERSONAL_INFO);
+  const [loading, setLoading] = useState<boolean>(false);
+  const [formData, setFormData] = useState<SignUpFormData>({
+    username: '',
+    email: '',
+    walletAddress: ''
   });
-  const [errors, setErrors] = useState<Partial<Record<keyof FormData, string>>>(
-    {}
-  );
-  const [isOver18, setIsOver18] = useState<boolean | null>(null);
+  const [errors, setErrors] = useState<Partial<SignUpFormData>>({});
+  const [walletConnecting, setWalletConnecting] = useState<boolean>(false);
+  const [walletError, setWalletError] = useState<string | null>(null);
 
-  // Check if user is over 18 when DOB changes
+  // Check if wallet is already registered
   useEffect(() => {
-    if (formData.dob) {
-      const birthDate = new Date(formData.dob);
-      const today = new Date();
-      let age = today.getFullYear() - birthDate.getFullYear();
-      const monthDiff = today.getMonth() - birthDate.getMonth();
-
-      if (
-        monthDiff < 0 ||
-        (monthDiff === 0 && today.getDate() < birthDate.getDate())
-      ) {
-        age--;
+    const checkWalletRegistration = async () => {
+      if (formData.walletAddress) {
+        try {
+          const isRegistered = await authService.isWalletRegistered(formData.walletAddress);
+          if (isRegistered) {
+            setErrors(prev => ({
+              ...prev,
+              walletAddress: 'This wallet is already registered. Please sign in instead.'
+            }));
+          } else {
+            setErrors(prev => {
+              const newErrors = { ...prev };
+              delete newErrors.walletAddress;
+              return newErrors;
+            });
+          }
+        } catch (error) {
+          console.error('Error checking wallet registration:', error);
+        }
       }
+    };
 
-      setIsOver18(age >= 18);
+    checkWalletRegistration();
+  }, [formData.walletAddress]);
 
-      if (age < 18) {
-        setErrors((prev) => ({
-          ...prev,
-          dob: "You must be at least 18 years old to join Nexus Syndicates.",
-        }));
-      } else {
-        setErrors((prev) => {
-          const newErrors = { ...prev };
-          delete newErrors.dob;
-          return newErrors;
-        });
-      }
-    }
-  }, [formData.dob]);
-
+  // Handle form input changes
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
-    setFormData((prev) => ({
+    setFormData(prev => ({
       ...prev,
-      [name]: value,
+      [name]: value
     }));
   };
 
-  const handleWalletConnect = (address: string) => {
-    setFormData((prev) => ({
-      ...prev,
-      walletAddress: address,
-    }));
-  };
-
-  const handleFactionSelect = (faction: Faction) => {
-    setFormData((prev) => ({
-      ...prev,
-      faction,
-    }));
-  };
-
-  const handlePlaystyleSelect = (playstyle: Playstyle) => {
-    setFormData((prev) => ({
-      ...prev,
-      playstyle,
-    }));
-  };
-
-  const handleAvatarSelect = (avatar: Avatar) => {
-    setFormData((prev) => ({
-      ...prev,
-      avatar,
-    }));
-  };
-
-  const validateStep = (step: number): boolean => {
-    const newErrors: Partial<Record<keyof FormData, string>> = {};
-
-    if (step === 1) {
-      if (!formData.name.trim()) newErrors.name = "Name is required";
-      if (!formData.gameName.trim())
-        newErrors.gameName = "Game name is required";
-      if (!formData.email.trim()) {
-        newErrors.email = "Email is required";
-      } else if (!/\S+@\S+\.\S+/.test(formData.email)) {
-        newErrors.email = "Email is invalid";
+  // Connect wallet
+  const connectWallet = async () => {
+    setWalletConnecting(true);
+    setWalletError(null);
+    
+    try {
+      // Check if Petra wallet is installed
+      if (!isPetraInstalled()) {
+        setWalletError('Petra wallet not found. Please install the Petra wallet extension.');
+        return;
       }
-      if (!formData.dob) {
-        newErrors.dob = "Date of birth is required";
-      } else if (!isOver18) {
-        newErrors.dob =
-          "You must be at least 18 years old to join Nexus Syndicates.";
+      
+      // Connect to Petra wallet using our utility function
+      const address = await connectPetraWallet();
+      
+      if (address) {
+        setFormData(prev => ({
+          ...prev,
+          walletAddress: address
+        }));
+      } else {
+        setWalletError('Failed to get wallet address. Please try again.');
       }
-    } else if (step === 2) {
-      if (!formData.walletAddress)
-        newErrors.walletAddress = "Wallet connection is required";
-    } else if (step === 3) {
-      if (!formData.faction) newErrors.faction = "Please select a syndicate";
-      if (!formData.playstyle)
-        newErrors.playstyle = "Please select a playstyle";
-    } else if (step === 4) {
-      if (!formData.avatar) newErrors.avatar = "Please select an avatar";
+    } catch (error) {
+      console.error('Error connecting wallet:', error);
+      setWalletError('Failed to connect wallet. Please try again.');
+    } finally {
+      setWalletConnecting(false);
     }
+  };
 
+  // Disconnect wallet
+  const disconnectWallet = async () => {
+    try {
+      await disconnectPetraWallet();
+      setFormData(prev => ({
+        ...prev,
+        walletAddress: ''
+      }));
+    } catch (error) {
+      console.error('Error disconnecting wallet:', error);
+      toast.error('Failed to disconnect wallet. Please try again.');
+    }
+  };
+
+  // Validate current step
+  const validateCurrentStep = (): boolean => {
+    const newErrors: Partial<SignUpFormData> = {};
+    
+    switch (currentStep) {
+      case SignUpStep.PERSONAL_INFO:
+        if (!formData.username.trim()) {
+          newErrors.username = 'Username is required';
+        } else if (formData.username.length < 3) {
+          newErrors.username = 'Username must be at least 3 characters';
+        }
+        
+        if (!formData.email.trim()) {
+          newErrors.email = 'Email is required';
+        } else if (!/\S+@\S+\.\S+/.test(formData.email)) {
+          newErrors.email = 'Email is invalid';
+        }
+        break;
+        
+      case SignUpStep.CONNECT_WALLET:
+        if (!formData.walletAddress) {
+          newErrors.walletAddress = 'Please connect your wallet';
+        }
+        break;
+        
+      case SignUpStep.FACTION_SELECTION:
+        if (!formData.faction) {
+          toast.error('Please select a faction');
+          return false;
+        }
+        break;
+        
+      case SignUpStep.PLAYSTYLE_SELECTION:
+        if (!formData.playstyle) {
+          toast.error('Please select a playstyle');
+          return false;
+        }
+        break;
+        
+      case SignUpStep.AVATAR_SELECTION:
+        if (!formData.avatar) {
+          toast.error('Please select an avatar');
+          return false;
+        }
+        break;
+    }
+    
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
 
+  // Handle next step
   const handleNextStep = () => {
-    if (validateStep(currentStep)) {
-      setCurrentStep((prev) => prev + 1);
+    if (validateCurrentStep()) {
+      setCurrentStep(prev => prev + 1);
     }
   };
 
+  // Handle previous step
   const handlePrevStep = () => {
-    setCurrentStep((prev) => prev - 1);
+    setCurrentStep(prev => prev - 1);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
+  // Handle faction selection
+  const handleFactionSelect = (faction: UIFaction) => {
+    setFormData(prev => ({
+      ...prev,
+      faction
+    }));
+  };
+
+  // Handle playstyle selection
+  const handlePlaystyleSelect = (playstyle: UIPlaystyle) => {
+    setFormData(prev => ({
+      ...prev,
+      playstyle
+    }));
+  };
+
+  // Handle avatar selection
+  const handleAvatarSelect = (avatar: UIAvatar) => {
+    setFormData(prev => ({
+      ...prev,
+      avatar
+    }));
+  };
+
+  // Handle form submission
+  const handleSubmit = async () => {
+    if (!validateCurrentStep()) return;
     
-    // Only proceed if we're on the final step and all validations pass
-    if (currentStep === 4 && validateStep(currentStep)) {
-      // Submit form
-      console.log("Form submitted:", formData);
-
-      // Call onSignUp if provided
-      if (onSignUp) {
-        onSignUp(formData.gameName);
+    try {
+      setLoading(true);
+      
+      if (!formData.faction || !formData.playstyle || !formData.avatar) {
+        toast.error('Please complete all steps before submitting');
+        return;
       }
-
-      // Navigate to Dashboard page after successful signup
-      navigate("/dashboard");
-    } else {
-      // If not on the final step, just go to the next step
-      handleNextStep();
+      
+      // Create user object
+      const newUser: User = {
+        id: '',
+        username: formData.username,
+        email: formData.email,
+        walletAddress: formData.walletAddress,
+        faction: formData.faction.id,
+        playstyle: formData.playstyle.id,
+        avatar: formData.avatar.id,
+        createdAt: new Date(),
+        lastLoginAt: new Date(),
+        isActive: true,
+        resources: {
+          credits: 1000, // Starting credits
+          dataShards: 50,
+          syntheticAlloys: 25,
+          quantumCores: 10
+        }
+      };
+      
+      // Create user in Firestore
+      const userId = await firestoreService.createUser(newUser);
+      
+      // Log in the user
+      await authService.signInWithWallet(formData.walletAddress);
+      
+      toast.success('Account created successfully!');
+      
+      // Call onSignUp prop if provided
+      if (onSignUp) {
+        onSignUp(formData.username);
+      }
+      
+      navigate('/dashboard');
+    } catch (error) {
+      console.error('Error creating account:', error);
+      toast.error('Failed to create account. Please try again.');
+    } finally {
+      setLoading(false);
     }
   };
 
-  const renderStepIndicator = () => {
-    return (
-      <div className="flex justify-between items-center mb-8 relative">
-        <div className="absolute h-1 bg-dark-gray w-full top-1/2 transform -translate-y-1/2 z-0"></div>
-        {[1, 2, 3, 4].map((step) => (
-          <div
-            key={step}
-            className={`w-10 h-10 rounded-full flex items-center justify-center z-10 font-cyber ${
-              step === currentStep
-                ? "bg-neon-blue text-dark-blue animate-pulse-slow"
-                : step < currentStep
-                ? "bg-neon-purple text-dark-blue"
-                : "bg-dark-gray text-light-gray"
-            }`}
-          >
-            {step}
-          </div>
-        ))}
-      </div>
-    );
-  };
-
-  const renderStepTitle = () => {
-    const titles = [
-      "Personal Information",
-      "Connect Your Wallet",
-      "Choose Your Path",
-      "Select Your Avatar",
-    ];
-
-    return (
-      <h2 className="text-2xl md:text-3xl font-cyber text-neon-blue mb-6 text-center">
-        {titles[currentStep - 1]}
-      </h2>
-    );
-  };
-
-  const renderStep = () => {
+  // Render step content
+  const renderStepContent = () => {
     switch (currentStep) {
-      case 1:
+      case SignUpStep.PERSONAL_INFO:
         return (
-          <div className="space-y-6">
-            <div>
-              <label
-                htmlFor="name"
-                className="block text-neon-blue mb-2 font-cyber"
-              >
-                Full Name
-              </label>
+          <div className="space-y-4">
+            <h2 className="text-2xl font-cyber text-neon-blue">Personal Information</h2>
+            
+            <div className="cyber-input-group">
+              <label htmlFor="username" className="cyber-label">Username</label>
               <input
                 type="text"
-                id="name"
-                name="name"
-                value={formData.name}
+                id="username"
+                name="username"
+                className={`cyber-input ${errors.username ? 'border-neon-pink' : ''}`}
+                value={formData.username}
                 onChange={handleInputChange}
-                className="cyber-input w-full text-black"
-                placeholder="Enter your full name"
+                placeholder="Enter your username"
               />
-              {errors.name && (
-                <p className="text-neon-pink text-sm mt-1">{errors.name}</p>
-              )}
+              {errors.username && <p className="text-neon-pink text-sm mt-1">{errors.username}</p>}
             </div>
-
-            <div>
-              <label
-                htmlFor="gameName"
-                className="block text-neon-blue mb-2 font-cyber"
-              >
-                Syndicate Name
-              </label>
-              <input
-                type="text"
-                id="gameName"
-                name="gameName"
-                value={formData.gameName}
-                onChange={handleInputChange}
-                className="cyber-input w-full text-black"
-                placeholder="Choose your in-game name"
-              />
-              {errors.gameName && (
-                <p className="text-neon-pink text-sm mt-1">{errors.gameName}</p>
-              )}
-            </div>
-
-            <div>
-              <label
-                htmlFor="email"
-                className="block text-neon-blue mb-2 font-cyber"
-              >
-                Email Address
-              </label>
+            
+            <div className="cyber-input-group">
+              <label htmlFor="email" className="cyber-label">Email</label>
               <input
                 type="email"
                 id="email"
                 name="email"
+                className={`cyber-input ${errors.email ? 'border-neon-pink' : ''}`}
                 value={formData.email}
                 onChange={handleInputChange}
-                className="cyber-input w-full text-black"
-                placeholder="Enter your email address"
+                placeholder="Enter your email"
               />
-              {errors.email && (
-                <p className="text-neon-pink text-sm mt-1">{errors.email}</p>
-              )}
-            </div>
-
-            <div>
-              <label
-                htmlFor="dob"
-                className="block text-neon-blue mb-2 font-cyber"
-              >
-                Date of Birth
-              </label>
-              <input
-                type="date"
-                id="dob"
-                name="dob"
-                value={formData.dob}
-                onChange={handleInputChange}
-                className="cyber-input w-full text-black"
-                max={
-                  new Date(
-                    new Date().setFullYear(new Date().getFullYear() - 18)
-                  )
-                    .toISOString()
-                    .split("T")[0]
-                }
-              />
-              {errors.dob && (
-                <p className="text-neon-pink text-sm mt-1">{errors.dob}</p>
-              )}
-              {isOver18 === false && (
-                <div className="bg-dark-purple border border-neon-pink p-3 rounded-md mt-3">
-                  <p className="text-neon-pink">
-                    You must be at least 18 years old to join Nexus Syndicates.
-                  </p>
-                </div>
-              )}
+              {errors.email && <p className="text-neon-pink text-sm mt-1">{errors.email}</p>}
             </div>
           </div>
         );
-
-      case 2:
+        
+      case SignUpStep.CONNECT_WALLET:
         return (
-          <div className="space-y-6">
+          <div className="space-y-4">
+            <h2 className="text-2xl font-cyber text-neon-blue">Connect Your Wallet</h2>
+            
             <div className="cyber-panel p-6">
-              <h3 className="text-xl font-cyber mb-4 text-neon-blue">
-                Connect Your Petra Wallet
-              </h3>
-              <p className="text-light-gray mb-6">
-                To participate in Nexus Syndicates, you'll need to connect your
-                Aptos wallet. This will be used for all in-game transactions and
-                to store your digital assets.
+              <p className="text-light-gray mb-4">
+                Connect your Aptos wallet to continue. This will be used for authentication and in-game transactions.
               </p>
-
-              <AptosWalletConnect onWalletConnect={handleWalletConnect} />
-
-              {formData.walletAddress && (
-                <div className="mt-4 p-3 bg-dark-blue rounded-md">
-                  <p className="text-neon-green text-sm">
-                    ✓ Wallet successfully connected
-                  </p>
+              
+              {formData.walletAddress ? (
+                <div className="space-y-4">
+                  <div className="flex items-center space-x-2">
+                    <div className="w-3 h-3 rounded-full bg-neon-green"></div>
+                    <span className="text-neon-green">Wallet Connected</span>
+                  </div>
+                  
+                  <div className="flex items-center space-x-2">
+                    <input
+                      type="text"
+                      className="cyber-input"
+                      value={formData.walletAddress}
+                      readOnly
+                    />
+                  </div>
+                  
+                  <button
+                    className="cyber-button-small border-neon-pink text-neon-pink"
+                    onClick={disconnectWallet}
+                  >
+                    Disconnect
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div className="flex items-center space-x-2">
+                    <div className="w-3 h-3 rounded-full bg-neon-pink"></div>
+                    <p className="text-neon-pink">Wallet Not Connected</p>
+                  </div>
+                  
+                  <button
+                    className="cyber-button w-full"
+                    onClick={connectWallet}
+                    disabled={walletConnecting}
+                  >
+                    {walletConnecting ? 'Connecting...' : 'Connect Wallet'}
+                  </button>
+                  
+                  {walletError && <p className="text-neon-pink text-sm">{walletError}</p>}
                 </div>
               )}
-
-              {errors.walletAddress && (
-                <p className="text-neon-pink text-sm mt-4">
-                  {errors.walletAddress}
-                </p>
-              )}
             </div>
           </div>
         );
-
-      case 3:
+        
+      case SignUpStep.FACTION_SELECTION:
         return (
-          <div className="space-y-8">
-            <FactionSelection
-              onSelect={handleFactionSelect}
-              selectedFactionId={formData.faction?.id}
-            />
-
-            {errors.faction && (
-              <p className="text-neon-pink text-sm">{errors.faction}</p>
-            )}
-
-            <div className="border-t border-dark-gray pt-8">
-              <PlaystyleSelection
-                onSelect={handlePlaystyleSelect}
-                selectedPlaystyleId={formData.playstyle?.id}
-              />
-
-              {errors.playstyle && (
-                <p className="text-neon-pink text-sm">{errors.playstyle}</p>
-              )}
-            </div>
-          </div>
+          <FactionSelection
+            onSelect={handleFactionSelect}
+            selectedFactionId={formData.faction?.id}
+          />
         );
-
-      case 4:
+        
+      case SignUpStep.PLAYSTYLE_SELECTION:
+        return (
+          <PlaystyleSelection
+            onSelect={handlePlaystyleSelect}
+            selectedPlaystyleId={formData.playstyle?.id}
+          />
+        );
+        
+      case SignUpStep.AVATAR_SELECTION:
+        return (
+          <AvatarSelection
+            onSelect={handleAvatarSelect}
+            selectedAvatarId={formData.avatar?.id}
+          />
+        );
+        
+      case SignUpStep.REVIEW:
         return (
           <div className="space-y-6">
-            <AvatarSelection
-              onSelect={handleAvatarSelect}
-              selectedAvatarId={formData.avatar?.id}
-            />
-
-            {errors.avatar && (
-              <p className="text-neon-pink text-sm">{errors.avatar}</p>
-            )}
-
-            <div className="cyber-panel mt-8">
-              <h3 className="text-xl font-cyber mb-4 text-neon-blue">
-                Ready to Enter Nexus Syndicates?
-              </h3>
-              <p className="text-light-gray">
-                Review your choices before finalizing your registration. Once
-                confirmed, you'll be ready to enter the cyberpunk metaverse of
-                Nexus Syndicates.
-              </p>
+            <h2 className="text-2xl font-cyber text-neon-blue">Review Your Information</h2>
+            
+            <div className="cyber-panel p-6 space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <h3 className="text-neon-blue font-cyber">Personal Info</h3>
+                  <p className="text-light-gray">Username: <span className="text-white">{formData.username}</span></p>
+                  <p className="text-light-gray">Email: <span className="text-white">{formData.email}</span></p>
+                </div>
+                
+                <div>
+                  <h3 className="text-neon-blue font-cyber">Wallet</h3>
+                  <p className="text-light-gray">Address: <span className="text-white truncate">{formData.walletAddress}</span></p>
+                </div>
+              </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <h3 className="text-neon-blue font-cyber">Faction</h3>
+                  <p className="text-light-gray">Selected: <span className="text-white">{formData.faction?.name}</span></p>
+                </div>
+                
+                <div>
+                  <h3 className="text-neon-blue font-cyber">Playstyle</h3>
+                  <p className="text-light-gray">Selected: <span className="text-white">{formData.playstyle?.name}</span></p>
+                </div>
+                
+                <div>
+                  <h3 className="text-neon-blue font-cyber">Avatar</h3>
+                  <p className="text-light-gray">Selected: <span className="text-white">{formData.avatar?.name}</span></p>
+                </div>
+              </div>
+              
+              <div className="pt-4 border-t border-dark-gray">
+                <p className="text-light-gray">
+                  By creating an account, you agree to our Terms of Service and Privacy Policy.
+                </p>
+              </div>
             </div>
           </div>
         );
-
+        
       default:
         return null;
     }
   };
 
+  // Progress bar calculation
+  const progressPercentage = ((currentStep + 1) / (Object.keys(SignUpStep).length / 2)) * 100;
+
   return (
-    <div className="min-h-screen bg-dark-blue bg-hex-pattern py-12 px-4">
-      <div className="max-w-4xl mx-auto">
-        <div className="text-center mb-12">
-          <h1 className="text-4xl md:text-6xl font-cyber text-neon-purple mb-4 animate-glitch">
-            NEXUS <span className="text-neon-blue">SYNDICATES</span>
-          </h1>
-          <p className="text-light-gray text-lg">
-            Join the elite network of digital power brokers
-          </p>
-        </div>
-
-        <div className="cyber-panel p-6 md:p-8 scrollable">
-          {renderStepIndicator()}
-          {renderStepTitle()}
-
-          <form onSubmit={handleSubmit}>
-            {renderStep()}
-
-            <div className="flex justify-between mt-8">
-              {currentStep > 1 && (
-                <button
-                  type="button"
-                  onClick={handlePrevStep}
-                  className="px-6 py-2 bg-dark-gray border-2 border-light-gray text-light-gray 
-                           hover:bg-light-gray hover:text-dark-gray transition-all duration-300 
-                           rounded-md font-cyber"
-                >
-                  Back
-                </button>
-              )}
-
-              {currentStep < 4 ? (
-                <button
-                  type="button"
-                  onClick={handleNextStep}
-                  className="ml-auto neon-button"
-                >
-                  Continue
-                </button>
-              ) : (
-                <button
-                  type="submit"
-                  className="ml-auto px-6 py-2 bg-dark-gray border-2 border-neon-pink text-neon-pink 
-                           hover:bg-neon-pink hover:text-dark-gray transition-all duration-300 
-                           shadow-neon-pink rounded-md font-cyber"
-                >
-                  Complete Registration
-                </button>
-              )}
-            </div>
-          </form>
-        </div>
-
-        <div className="text-center mt-8 text-light-gray text-sm">
-          <p>
-            By registering, you agree to our Terms of Service and Privacy
-            Policy.
-          </p>
-          <p className="mt-2"> 2025 Nexus Syndicates. All rights reserved.</p>
+    <div className="min-h-screen bg-dark-blue flex flex-col">
+      <div className="container mx-auto px-4 py-8 flex-1 flex flex-col">
+        <div className="max-w-4xl mx-auto w-full flex-1 flex flex-col">
+          <h1 className="text-3xl font-cyber text-neon-blue mb-6">Join Nexus Syndicate</h1>
+          
+          {/* Progress bar */}
+          <div className="w-full bg-dark-gray h-2 mb-8 rounded-full overflow-hidden">
+            <div 
+              className="h-full bg-neon-blue"
+              style={{ width: `${progressPercentage}%` }}
+            ></div>
+          </div>
+          
+          {/* Step content */}
+          <div className="flex-1 cyber-panel p-6 mb-6">
+            {renderStepContent()}
+          </div>
+          
+          {/* Navigation buttons */}
+          <div className="flex justify-between">
+            <button
+              className="cyber-button-small"
+              onClick={handlePrevStep}
+              disabled={currentStep === 0 || loading}
+            >
+              Previous
+            </button>
+            
+            {currentStep < SignUpStep.REVIEW ? (
+              <button
+                className="cyber-button-small"
+                onClick={handleNextStep}
+                disabled={loading}
+              >
+                Next
+              </button>
+            ) : (
+              <button
+                className="cyber-button"
+                onClick={handleSubmit}
+                disabled={loading}
+              >
+                {loading ? 'Creating Account...' : 'Create Account'}
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </div>

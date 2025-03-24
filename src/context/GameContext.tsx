@@ -1,6 +1,10 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { Territory, Agent, Player, GameEvent } from '../types/gameTypes';
 import gameService from '../services/gameService';
+import { updateExtractedResources } from '../utils/resourceUtils';
+import authService from '../services/authService';
+import firestoreService from '../services/firestoreService';
+import { RESOURCE_UPDATE_EVENT } from '../utils/resourceUtils';
 
 // Initial mock data
 import { mockTerritories, mockAgents } from '../data/mockData';
@@ -28,6 +32,7 @@ interface GameContextType {
   createTradeOffer: (targetPlayerId: string, offerResources: Record<string, number>, requestResources: Record<string, number>) => void;
   createAllianceOffer: (targetPlayerId: string, message: string) => void;
   switchPlayer: (playerId: string) => void;
+  addNotification: (type: "info" | "success" | "warning" | "error", message: string, autoClose?: boolean, timeout?: number) => void;
 }
 
 // Create context
@@ -53,6 +58,7 @@ const GameContext = createContext<GameContextType>({
   createTradeOffer: () => {},
   createAllianceOffer: () => {},
   switchPlayer: () => {},
+  addNotification: () => {},
 });
 
 // Provider component
@@ -69,6 +75,102 @@ export const GameProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [gameEvents, setGameEvents] = useState<GameEvent[]>([]);
   const [selectedTerritory, setSelectedTerritory] = useState<Territory | null>(null);
   const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null);
+
+  // Fetch user data from Firebase and update currentPlayer
+  useEffect(() => {
+    const fetchUserData = async () => {
+      try {
+        const user = authService.getUser();
+        if (user && user.id) {
+          console.log('Fetching user data for GameContext:', user.id);
+          
+          // Get the latest user data from Firebase
+          const userData = await firestoreService.getUserById(user.id);
+          
+          if (userData) {
+            // Create a player object from the user data
+            const userPlayer: Player = {
+              id: userData.id || 'player1',
+              name: userData.username || 'Your Syndicate',
+              faction: userData.faction || 'Netrunners',
+              resources: {
+                credits: userData.resources?.credits || 0,
+                dataShards: userData.resources?.dataShards || 0,
+                syntheticAlloys: userData.resources?.syntheticAlloys || 0,
+                quantumCores: userData.resources?.quantumCores || 0
+              }
+            };
+            
+            console.log('Updated player from Firebase:', userPlayer);
+            
+            // Update the current player
+            setCurrentPlayer(userPlayer);
+            
+            // Also update the player in the players array
+            setPlayers(prevPlayers => {
+              const updatedPlayers = [...prevPlayers];
+              const playerIndex = updatedPlayers.findIndex(p => p.id === 'player1');
+              if (playerIndex !== -1) {
+                updatedPlayers[playerIndex] = userPlayer;
+              }
+              return updatedPlayers;
+            });
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching user data for GameContext:', error);
+      }
+    };
+    
+    fetchUserData();
+  }, []);
+  
+  // Listen for resource update events
+  useEffect(() => {
+    const handleResourceUpdate = (event: CustomEvent) => {
+      console.log('Resource update event received in GameContext:', event.detail);
+      const { resources } = event.detail;
+      
+      if (resources && currentPlayer) {
+        // Update the current player with the new resources
+        const updatedPlayer = {
+          ...currentPlayer,
+          resources: {
+            credits: resources.credits || 0,
+            dataShards: resources.dataShards || 0,
+            syntheticAlloys: resources.syntheticAlloys || 0,
+            quantumCores: resources.quantumCores || 0
+          }
+        };
+        
+        setCurrentPlayer(updatedPlayer);
+        
+        // Also update the player in the players array
+        setPlayers(prevPlayers => {
+          const updatedPlayers = [...prevPlayers];
+          const playerIndex = updatedPlayers.findIndex(p => p.id === currentPlayer.id);
+          if (playerIndex !== -1) {
+            updatedPlayers[playerIndex] = updatedPlayer;
+          }
+          return updatedPlayers;
+        });
+      }
+    };
+    
+    // Add event listener
+    document.addEventListener(
+      RESOURCE_UPDATE_EVENT, 
+      handleResourceUpdate as EventListener
+    );
+    
+    // Clean up event listener on component unmount
+    return () => {
+      document.removeEventListener(
+        RESOURCE_UPDATE_EVENT, 
+        handleResourceUpdate as EventListener
+      );
+    };
+  }, [currentPlayer]);
 
   // Initialize game service
   useEffect(() => {
@@ -127,7 +229,32 @@ export const GameProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   // Extract resources
   const extractResources = (territoryId: number) => {
+    // Get resource gains before calling gameService
+    const territory = territories.find(t => t.id === territoryId);
+    if (!territory || territory.owner !== 'player') return;
+    
+    // Calculate resource gains (similar to what gameService does)
+    const resourceGains: Record<string, number> = {};
+    territory.resources.forEach(resource => {
+      resourceGains[resource] = Math.floor(Math.random() * 10) + 5; // Random resource gain
+    });
+    
+    // Call game service to update game state
     gameService.extractResources(territoryId, territories);
+    
+    // Update Firebase with the same resource gains
+    console.log('Updating Firebase with extracted resources:', resourceGains);
+    updateExtractedResources(resourceGains)
+      .then(success => {
+        if (success) {
+          console.log('Firebase resources updated successfully after extraction');
+        } else {
+          console.error('Failed to update Firebase resources after extraction');
+        }
+      })
+      .catch(error => {
+        console.error('Error updating Firebase resources after extraction:', error);
+      });
   };
 
   // Create trade offer
@@ -143,6 +270,11 @@ export const GameProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   // Switch current player (for testing)
   const switchPlayer = (playerId: string) => {
     gameService.setCurrentPlayer(playerId);
+  };
+
+  // Add notification
+  const addNotification = (type: "info" | "success" | "warning" | "error", message: string, autoClose?: boolean, timeout?: number) => {
+    // TO DO: implement notification logic
   };
 
   return (
@@ -169,6 +301,7 @@ export const GameProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         createTradeOffer,
         createAllianceOffer,
         switchPlayer,
+        addNotification,
       }}
     >
       {children}

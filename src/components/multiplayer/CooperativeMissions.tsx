@@ -1,320 +1,384 @@
-import React, { useState } from 'react';
-import { useGame } from '../../context/GameContext';
+import React, { useState, useEffect } from 'react';
+import { Box, Typography, Grid, Paper, Button, LinearProgress, Chip, Avatar, Tooltip } from '@mui/material';
+import { styled } from '@mui/material/styles';
+import { Mission } from '../../services/multiplayerService';
+import multiplayerService from '../../services/multiplayerService';
 
-interface Mission {
-  id: string;
-  name: string;
-  description: string;
-  difficulty: 'easy' | 'medium' | 'hard';
-  requiredRoles: string[];
-  rewards: {
-    credits: number;
-    dataShards: number;
-    syntheticAlloys: number;
-    quantumCores: number;
-  };
-  participants: {
-    playerId: string;
-    playerName: string;
-    role: string;
-    status: 'pending' | 'ready' | 'active';
-  }[];
-  status: 'recruiting' | 'preparing' | 'active' | 'completed' | 'failed';
-  timeRemaining?: number;
+// Styled components
+const MissionCard = styled(Paper)(({ theme }) => ({
+  padding: theme.spacing(2),
+  height: '100%',
+  display: 'flex',
+  flexDirection: 'column',
+  position: 'relative',
+  overflow: 'hidden',
+  background: 'rgba(20, 20, 30, 0.8)',
+  backdropFilter: 'blur(10px)',
+  border: '1px solid rgba(81, 81, 120, 0.5)',
+  '&:hover': {
+    boxShadow: '0 0 15px rgba(0, 200, 255, 0.5)',
+    border: '1px solid rgba(0, 200, 255, 0.5)',
+  },
+}));
+
+// Interface for the component props
+interface CooperativeMissionsProps {
+  sessionId: string;
+  isHost: boolean;
 }
 
-const CooperativeMissions: React.FC = () => {
-  const { currentPlayer, players } = useGame();
-  const [selectedMission, setSelectedMission] = useState<Mission | null>(null);
-  const [selectedRole, setSelectedRole] = useState<string>('');
+const CooperativeMissions: React.FC<CooperativeMissionsProps> = ({ sessionId, isHost }) => {
+  const [missions, setMissions] = useState<Mission[]>([]);
+  const [activeMission, setActiveMission] = useState<Mission | null>(null);
+  const [loading, setLoading] = useState<boolean>(false);
+
+  // Load missions when component mounts
+  useEffect(() => {
+    // Get missions from the server or use default ones
+    const session = multiplayerService.getActiveSession();
+    if (session && session.currentMission) {
+      setActiveMission(session.currentMission);
+    } else {
+      setMissions(defaultMissions);
+    }
+
+    // Listen for mission events
+    const handleMissionStarted = (mission: Mission) => {
+      setActiveMission(mission);
+      setLoading(false);
+    };
+
+    const handleMissionProgress = (data: { missionId: string; progress: number; objectives: any[] }) => {
+      setActiveMission(prev => {
+        if (prev && prev.id === data.missionId) {
+          return {
+            ...prev,
+            progress: data.progress,
+            objectives: data.objectives
+          };
+        }
+        return prev;
+      });
+    };
+
+    const handleMissionCompleted = (data: { missionId: string; rewards: any }) => {
+      setActiveMission(prev => {
+        if (prev && prev.id === data.missionId) {
+          return {
+            ...prev,
+            status: 'completed',
+            progress: 100
+          };
+        }
+        return prev;
+      });
+    };
+
+    const handleSessionUpdated = (session: any) => {
+      if (session && session.currentMission) {
+        setActiveMission(session.currentMission);
+      }
+    };
+
+    multiplayerService.on('mission_started', handleMissionStarted);
+    multiplayerService.on('mission_progress', handleMissionProgress);
+    multiplayerService.on('mission_completed', handleMissionCompleted);
+    multiplayerService.on('session_updated', handleSessionUpdated);
+    multiplayerService.on('session_synced', handleSessionUpdated);
+
+    return () => {
+      multiplayerService.off('mission_started', handleMissionStarted);
+      multiplayerService.off('mission_progress', handleMissionProgress);
+      multiplayerService.off('mission_completed', handleMissionCompleted);
+      multiplayerService.off('session_updated', handleSessionUpdated);
+      multiplayerService.off('session_synced', handleSessionUpdated);
+    };
+  }, []);
+
+  const handleStartMission = (missionId: string) => {
+    setLoading(true);
+    multiplayerService.startMission(sessionId, missionId);
+  };
+
+  const getDifficultyColor = (difficulty: string) => {
+    switch (difficulty) {
+      case 'easy':
+        return '#4caf50';
+      case 'medium':
+        return '#ff9800';
+      case 'hard':
+        return '#f44336';
+      default:
+        return '#2196f3';
+    }
+  };
+
+  // Render active mission if there is one
+  if (activeMission) {
+    return (
+      <Box sx={{ p: 2 }}>
+        <Typography variant="h5" gutterBottom sx={{ color: '#0cf', mb: 2 }}>
+          Active Mission: {activeMission.name}
+        </Typography>
+        
+        <Paper sx={{ p: 2, mb: 3, background: 'rgba(20, 20, 30, 0.8)', border: '1px solid rgba(81, 81, 120, 0.5)' }}>
+          <Typography variant="body1" sx={{ mb: 2 }}>
+            {activeMission.description}
+          </Typography>
+          
+          <Box sx={{ mb: 2 }}>
+            <Typography variant="subtitle2" gutterBottom>
+              Progress: {activeMission.progress}%
+            </Typography>
+            <LinearProgress 
+              variant="determinate" 
+              value={activeMission.progress} 
+              sx={{ 
+                height: 10, 
+                borderRadius: 5,
+                backgroundColor: 'rgba(0, 0, 0, 0.3)',
+                '& .MuiLinearProgress-bar': {
+                  backgroundColor: activeMission.progress === 100 ? '#4caf50' : '#0cf',
+                }
+              }} 
+            />
+          </Box>
+          
+          <Typography variant="subtitle1" gutterBottom>
+            Objectives:
+          </Typography>
+          
+          <Box sx={{ mb: 2 }}>
+            {activeMission.objectives.map((objective) => (
+              <Box key={objective.id} sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                <Box 
+                  sx={{ 
+                    width: 20, 
+                    height: 20, 
+                    borderRadius: '50%', 
+                    mr: 1,
+                    border: '2px solid',
+                    borderColor: objective.completed ? '#4caf50' : 'rgba(255, 255, 255, 0.5)',
+                    backgroundColor: objective.completed ? 'rgba(76, 175, 80, 0.2)' : 'transparent',
+                    display: 'flex',
+                    justifyContent: 'center',
+                    alignItems: 'center'
+                  }}
+                >
+                  {objective.completed && (
+                    <span style={{ color: '#4caf50', fontSize: '14px' }}>✓</span>
+                  )}
+                </Box>
+                <Typography 
+                  variant="body2" 
+                  sx={{ 
+                    textDecoration: objective.completed ? 'line-through' : 'none',
+                    color: objective.completed ? 'rgba(255, 255, 255, 0.6)' : 'white'
+                  }}
+                >
+                  {objective.description}
+                </Typography>
+              </Box>
+            ))}
+          </Box>
+          
+          <Typography variant="subtitle1" gutterBottom>
+            Rewards:
+          </Typography>
+          
+          <Grid container spacing={2}>
+            <Grid item>
+              <Chip 
+                label={`${activeMission.rewards.experience} XP`} 
+                sx={{ backgroundColor: 'rgba(33, 150, 243, 0.2)', color: '#2196f3' }}
+              />
+            </Grid>
+            <Grid item>
+              <Chip 
+                label={`${activeMission.rewards.credits} Credits`} 
+                sx={{ backgroundColor: 'rgba(255, 193, 7, 0.2)', color: '#ffc107' }}
+              />
+            </Grid>
+            {Object.entries(activeMission.rewards.resources).map(([key, value]) => (
+              <Grid item key={key}>
+                <Chip 
+                  label={`${value} ${key.replace(/([A-Z])/g, ' $1').trim()}`} 
+                  sx={{ backgroundColor: 'rgba(76, 175, 80, 0.2)', color: '#4caf50' }}
+                />
+              </Grid>
+            ))}
+          </Grid>
+        </Paper>
+        
+        {activeMission.status === 'completed' && (
+          <Box sx={{ textAlign: 'center', mb: 2 }}>
+            <Typography variant="h6" sx={{ color: '#4caf50', mb: 1 }}>
+              Mission Completed!
+            </Typography>
+            <Button 
+              variant="contained" 
+              color="primary" 
+              onClick={() => setActiveMission(null)}
+              sx={{ 
+                mt: 1,
+                background: 'linear-gradient(45deg, #2196F3 30%, #21CBF3 90%)',
+                '&:hover': {
+                  background: 'linear-gradient(45deg, #21CBF3 30%, #2196F3 90%)',
+                }
+              }}
+            >
+              Return to Mission Selection
+            </Button>
+          </Box>
+        )}
+      </Box>
+    );
+  }
 
   // Mock missions data
-  const missions: Mission[] = [
+  const defaultMissions: Mission[] = [
     {
       id: 'mission1',
-      name: 'Corporate Data Heist',
-      description: 'Infiltrate Arasaka Corp servers and extract classified project data. Requires coordination between hackers, enforcers, and smugglers.',
+      name: 'Arasaka Data Heist',
+      description: 'Infiltrate Arasaka Corp servers and extract classified project data.',
       difficulty: 'medium',
-      requiredRoles: ['Hacker', 'Enforcer', 'Smuggler'],
       rewards: {
+        experience: 500,
         credits: 1500,
-        dataShards: 75,
-        syntheticAlloys: 30,
-        quantumCores: 10
+        resources: {
+          dataShards: 75,
+          syntheticAlloys: 30,
+          quantumCores: 10
+        }
       },
-      participants: [
+      requirements: {
+        minPlayers: 3,
+        recommendedPlayers: 4
+      },
+      objectives: [
         {
-          playerId: 'player2',
-          playerName: 'CyberHawk',
-          role: 'Hacker',
-          status: 'ready'
+          id: 'objective1',
+          description: 'Hack the server',
+          completed: false
+        },
+        {
+          id: 'objective2',
+          description: 'Extract the data',
+          completed: false
         }
       ],
-      status: 'recruiting'
+      status: 'available',
+      progress: 0
     },
     {
       id: 'mission2',
-      name: 'Quantum Vault Raid',
-      description: 'Break into a secure quantum vault in Night City\'s financial district. Requires technical expertise and combat support.',
+      name: 'Quantum Vault Heist',
+      description: 'Break into a secure quantum vault in Night City\'s financial district.',
       difficulty: 'hard',
-      requiredRoles: ['Hacker', 'Enforcer', 'Techie', 'Smuggler'],
       rewards: {
+        experience: 800,
         credits: 2500,
-        dataShards: 120,
-        syntheticAlloys: 60,
-        quantumCores: 25
+        resources: {
+          dataShards: 120,
+          syntheticAlloys: 60,
+          quantumCores: 25
+        }
       },
-      participants: [
+      requirements: {
+        minPlayers: 4,
+        recommendedPlayers: 6
+      },
+      objectives: [
         {
-          playerId: 'player3',
-          playerName: 'DataWraith',
-          role: 'Hacker',
-          status: 'ready'
+          id: 'objective1',
+          description: 'Disable the security system',
+          completed: false
         },
         {
-          playerId: 'player4',
-          playerName: 'NeonShadow',
-          role: 'Enforcer',
-          status: 'ready'
+          id: 'objective2',
+          description: 'Crack the vault',
+          completed: false
         }
       ],
-      status: 'recruiting'
+      status: 'available',
+      progress: 0
     },
     {
       id: 'mission3',
       name: 'Syndicate Alliance',
-      description: 'Form a temporary alliance with a rival syndicate to take down a common enemy. Diplomatic skills required.',
+      description: 'Form a temporary alliance with a rival syndicate to take down a common enemy.',
       difficulty: 'easy',
-      requiredRoles: ['Negotiator', 'Hacker', 'Smuggler'],
       rewards: {
+        experience: 300,
         credits: 1000,
-        dataShards: 50,
-        syntheticAlloys: 25,
-        quantumCores: 5
+        resources: {
+          dataShards: 50,
+          syntheticAlloys: 25,
+          quantumCores: 5
+        }
       },
-      participants: [],
-      status: 'recruiting'
+      requirements: {
+        minPlayers: 2,
+        recommendedPlayers: 3
+      },
+      objectives: [
+        {
+          id: 'objective1',
+          description: 'Meet with rival syndicate',
+          completed: false
+        }
+      ],
+      status: 'available',
+      progress: 0
     }
   ];
 
-  const getDifficultyColor = (difficulty: string): string => {
-    switch (difficulty) {
-      case 'easy':
-        return 'text-neon-green';
-      case 'medium':
-        return 'text-neon-yellow';
-      case 'hard':
-        return 'text-neon-pink';
-      default:
-        return 'text-light-gray';
-    }
-  };
-
-  const getRoleColor = (role: string): string => {
-    switch (role) {
-      case 'Hacker':
-        return 'text-neon-blue';
-      case 'Enforcer':
-        return 'text-neon-pink';
-      case 'Smuggler':
-        return 'text-neon-green';
-      case 'Techie':
-        return 'text-neon-yellow';
-      case 'Negotiator':
-        return 'text-neon-purple';
-      default:
-        return 'text-light-gray';
-    }
-  };
-
-  const joinMission = (mission: Mission, role: string) => {
-    if (!currentPlayer) return;
-    
-    // In a real implementation, this would send a request to a backend service
-    // missionService.joinMission(mission.id, currentPlayer.id, role);
-    
-    // For demo purposes, we'll just update the local state
-    const updatedMission = { ...mission };
-    updatedMission.participants.push({
-      playerId: currentPlayer.id,
-      playerName: currentPlayer.name,
-      role: role,
-      status: 'pending'
-    });
-    
-    setSelectedMission(updatedMission);
-    
-    // In a real implementation, this would trigger a state update from the backend
-  };
-
-  const renderMissionDetails = (mission: Mission) => {
-    return (
-      <div className="p-4 space-y-4">
-        <div className="flex justify-between items-start">
-          <div>
-            <h3 className="text-neon-blue font-cyber text-lg">{mission.name}</h3>
-            <p className={`text-xs ${getDifficultyColor(mission.difficulty)}`}>
-              Difficulty: {mission.difficulty.toUpperCase()}
-            </p>
-          </div>
-          <div className="bg-dark-blue px-2 py-1 rounded text-xs text-light-gray">
-            {mission.status.toUpperCase()}
-          </div>
-        </div>
-        
-        <p className="text-sm text-light-gray">{mission.description}</p>
-        
-        <div>
-          <h4 className="text-neon-blue text-sm mb-2">Required Roles:</h4>
-          <div className="flex flex-wrap gap-2">
-            {mission.requiredRoles.map((role) => {
-              const isFilled = mission.participants.some(p => p.role === role);
-              return (
-                <div 
-                  key={role}
-                  className={`px-2 py-1 rounded text-xs border ${
-                    isFilled 
-                      ? 'border-neon-green bg-neon-green bg-opacity-10' 
-                      : 'border-gray-600'
-                  }`}
-                >
-                  <span className={getRoleColor(role)}>{role}</span>
-                  {isFilled && (
-                    <span className="ml-1 text-neon-green">✓</span>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-        
-        <div>
-          <h4 className="text-neon-blue text-sm mb-2">Participants:</h4>
-          {mission.participants.length === 0 ? (
-            <p className="text-xs text-gray-500">No participants yet. Be the first to join!</p>
-          ) : (
-            <div className="space-y-2">
-              {mission.participants.map((participant) => (
-                <div key={participant.playerId} className="flex justify-between items-center bg-dark-blue bg-opacity-30 p-2 rounded">
-                  <div>
-                    <span className="text-sm text-light-gray">{participant.playerName}</span>
-                    <span className="ml-2 text-xs text-gray-400">
-                      ({participant.status})
-                    </span>
-                  </div>
-                  <span className={`text-xs ${getRoleColor(participant.role)}`}>
-                    {participant.role}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-        
-        <div>
-          <h4 className="text-neon-blue text-sm mb-2">Rewards:</h4>
-          <div className="grid grid-cols-2 gap-2">
-            <div className="flex items-center">
-              <span className="text-neon-green text-xs mr-1">💰</span>
-              <span className="text-xs text-light-gray">{mission.rewards.credits} Credits</span>
-            </div>
-            <div className="flex items-center">
-              <span className="text-neon-blue text-xs mr-1">💾</span>
-              <span className="text-xs text-light-gray">{mission.rewards.dataShards} Data Shards</span>
-            </div>
-            <div className="flex items-center">
-              <span className="text-neon-purple text-xs mr-1">🔩</span>
-              <span className="text-xs text-light-gray">{mission.rewards.syntheticAlloys} Synthetic Alloys</span>
-            </div>
-            <div className="flex items-center">
-              <span className="text-neon-yellow text-xs mr-1">⚛️</span>
-              <span className="text-xs text-light-gray">{mission.rewards.quantumCores} Quantum Cores</span>
-            </div>
-          </div>
-        </div>
-        
-        {currentPlayer && !mission.participants.some(p => p.playerId === currentPlayer.id) && (
-          <div className="mt-4">
-            <h4 className="text-neon-blue text-sm mb-2">Join Mission:</h4>
-            <div className="flex space-x-2">
-              <select 
-                value={selectedRole}
-                onChange={(e) => setSelectedRole(e.target.value)}
-                className="bg-dark-blue text-light-gray text-sm p-2 rounded outline-none flex-grow"
-              >
-                <option value="">Select a role...</option>
-                {mission.requiredRoles
-                  .filter(role => !mission.participants.some(p => p.role === role))
-                  .map(role => (
-                    <option key={role} value={role}>{role}</option>
-                  ))
-                }
-              </select>
-              <button 
-                onClick={() => joinMission(mission, selectedRole)}
-                disabled={!selectedRole}
-                className={`px-3 py-1 rounded font-cyber text-sm ${
-                  selectedRole 
-                    ? 'bg-neon-blue text-black' 
-                    : 'bg-gray-700 text-gray-400 cursor-not-allowed'
-                }`}
-              >
-                JOIN
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
-    );
-  };
-
   return (
-    <div className="cyber-panel bg-dark-gray p-4">
-      <h2 className="text-neon-blue font-cyber text-xl mb-4">COOPERATIVE MISSIONS</h2>
+    <Box sx={{ p: 2 }}>
+      <Typography variant="h5" gutterBottom sx={{ color: '#0cf', mb: 2 }}>
+        Available Missions
+      </Typography>
       
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="md:col-span-1 space-y-2">
-          <h3 className="text-neon-blue font-cyber text-sm mb-2">AVAILABLE MISSIONS</h3>
-          
-          {missions.map((mission) => (
-            <div 
-              key={mission.id}
-              onClick={() => setSelectedMission(mission)}
-              className={`p-3 rounded cursor-pointer transition-all duration-200 ${
-                selectedMission?.id === mission.id
-                  ? 'bg-neon-blue bg-opacity-20 border border-neon-blue'
-                  : 'bg-dark-blue bg-opacity-30 hover:bg-opacity-40'
-              }`}
-            >
-              <div className="flex justify-between">
-                <h4 className="text-sm font-cyber text-light-gray">{mission.name}</h4>
-                <span className={`text-xs ${getDifficultyColor(mission.difficulty)}`}>
-                  {mission.difficulty.toUpperCase()}
-                </span>
-              </div>
-              <div className="flex justify-between mt-2">
-                <span className="text-xs text-gray-400">
-                  {mission.participants.length}/{mission.requiredRoles.length} members
-                </span>
-                <span className="text-xs text-gray-400">
-                  {mission.status.toUpperCase()}
-                </span>
-              </div>
-            </div>
-          ))}
-        </div>
-        
-        <div className="md:col-span-2 bg-dark-blue bg-opacity-30 rounded">
-          {selectedMission ? (
-            renderMissionDetails(selectedMission)
-          ) : (
-            <div className="h-full flex items-center justify-center">
-              <p className="text-gray-500">Select a mission to view details</p>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
+      <Grid container spacing={2}>
+        {defaultMissions.map((mission) => (
+          <Grid item key={mission.id} xs={12} sm={6} md={4} lg={3}>
+            <MissionCard>
+              <Typography variant="h6" gutterBottom sx={{ color: '#0cf', mb: 1 }}>
+                {mission.name}
+              </Typography>
+              
+              <Typography variant="body1" sx={{ mb: 2 }}>
+                {mission.description}
+              </Typography>
+              
+              <Box sx={{ mb: 2 }}>
+                <Typography variant="subtitle2" gutterBottom>
+                  Difficulty: {mission.difficulty}
+                </Typography>
+                <Typography variant="subtitle2" gutterBottom>
+                  Progress: {mission.progress}%
+                </Typography>
+              </Box>
+              
+              <Button 
+                variant="contained" 
+                color="primary" 
+                onClick={() => handleStartMission(mission.id)}
+                sx={{ 
+                  mt: 1,
+                  background: 'linear-gradient(45deg, #2196F3 30%, #21CBF3 90%)',
+                  '&:hover': {
+                    background: 'linear-gradient(45deg, #21CBF3 30%, #2196F3 90%)',
+                  }
+                }}
+              >
+                Start Mission
+              </Button>
+            </MissionCard>
+          </Grid>
+        ))}
+      </Grid>
+    </Box>
   );
 };
 

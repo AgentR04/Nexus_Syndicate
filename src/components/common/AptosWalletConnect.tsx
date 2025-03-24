@@ -1,110 +1,141 @@
 import React, { useState, useEffect } from 'react';
+import { Types } from 'aptos';
+import { 
+  isPetraInstalled, 
+  connectPetraWallet, 
+  disconnectPetraWallet, 
+  getPetraWalletAccount, 
+  isPetraWalletConnected 
+} from '../../types/wallet';
 
 interface AptosWalletConnectProps {
   onWalletConnect: (address: string) => void;
 }
 
-// Mock addresses for demonstration
-const mockAddresses = [
-  '0x1a2b3c4d5e6f7g8h9i0j1k2l3m4n5o6p7q8r9s0t',
-  '0xabcdef1234567890abcdef1234567890abcdef12',
-  '0x9876543210fedcba9876543210fedcba98765432'
-];
-
 const AptosWalletConnect: React.FC<AptosWalletConnectProps> = ({ onWalletConnect }) => {
   const [isConnected, setIsConnected] = useState<boolean>(false);
   const [walletAddress, setWalletAddress] = useState<string>('');
+  const [networkName, setNetworkName] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [showDropdown, setShowDropdown] = useState<boolean>(false);
 
+  // Check connection status on component mount
   useEffect(() => {
-    // Check if wallet address exists in localStorage
-    const savedAddress = localStorage.getItem('walletAddress');
-    if (savedAddress) {
-      setWalletAddress(savedAddress);
-      setIsConnected(true);
-      onWalletConnect(savedAddress);
-    }
+    const checkConnection = async () => {
+      if (isPetraInstalled()) {
+        try {
+          const connected = await isPetraWalletConnected();
+          if (connected) {
+            const account = await getPetraWalletAccount();
+            if (account.address) {
+              setWalletAddress(account.address);
+              setIsConnected(true);
+              onWalletConnect(account.address);
+              // Get network info if needed
+              if (window.aptos?.network) {
+                const network = await window.aptos.network();
+                if (network?.name) {
+                  setNetworkName(network.name);
+                }
+              }
+            }
+          }
+        } catch (error) {
+          console.error('Error checking wallet connection:', error);
+        }
+      }
+    };
+
+    checkConnection();
   }, [onWalletConnect]);
 
+  // Connect to wallet
   const handleConnect = async () => {
     setIsLoading(true);
-    // Simulate wallet connection delay
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    const randomAddress = mockAddresses[Math.floor(Math.random() * mockAddresses.length)];
-    localStorage.setItem('walletAddress', randomAddress);
-    setWalletAddress(randomAddress);
-    setIsConnected(true);
-    setIsLoading(false);
-    onWalletConnect(randomAddress);
+    try {
+      const address = await connectPetraWallet();
+      setWalletAddress(address);
+      setIsConnected(true);
+      onWalletConnect(address);
+      
+      // Get network info if needed
+      if (window.aptos?.network) {
+        const network = await window.aptos.network();
+        if (network?.name) {
+          setNetworkName(network.name);
+        }
+      }
+    } catch (error) {
+      console.error('Error connecting to wallet:', error);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const handleDisconnect = () => {
-    localStorage.removeItem('walletAddress');
-    setWalletAddress('');
-    setIsConnected(false);
-    setShowDropdown(false);
-    onWalletConnect('');
+  // Disconnect from wallet
+  const handleDisconnect = async () => {
+    setIsLoading(true);
+    try {
+      await disconnectPetraWallet();
+      setWalletAddress('');
+      setIsConnected(false);
+      setNetworkName('');
+      onWalletConnect('');
+    } catch (error) {
+      console.error('Error disconnecting from wallet:', error);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const toggleDropdown = () => {
     setShowDropdown(!showDropdown);
   };
 
-  const shortenAddress = (address: string) => {
-    return `${address.substring(0, 6)}...${address.substring(address.length - 4)}`;
-  };
-
   return (
     <div className="relative">
       {isConnected ? (
-        <>
-          <button 
+        <div className="flex items-center">
+          <button
+            className="cyber-button-small flex items-center"
             onClick={toggleDropdown}
-            className="cyber-button neon-border-blue text-glow-blue flex items-center justify-between w-full"
           >
-            <span className="mr-2">👤</span>
-            <span className="truncate">{shortenAddress(walletAddress)}</span>
-            <span className="ml-2">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-              </svg>
+            <span className="w-3 h-3 rounded-full bg-neon-green mr-2"></span>
+            <span className="truncate max-w-[120px]">
+              {walletAddress.slice(0, 6)}...{walletAddress.slice(-4)}
             </span>
+            <span className="ml-2">▼</span>
           </button>
           
           {showDropdown && (
-            <div className="absolute right-0 mt-2 w-full cyber-panel cyber-glass z-10 cyber-pulse">
-              <div className="p-2">
-                <div className="mb-2 text-xs text-gray-400">Connected Wallet</div>
-                <div className="text-sm text-glow-green mb-3 break-all">{walletAddress}</div>
-                <button 
-                  onClick={handleDisconnect}
-                  className="cyber-button-small neon-border-pink text-glow-pink w-full"
-                >
-                  Disconnect Wallet
-                </button>
+            <div className="absolute top-full right-0 mt-2 w-48 bg-cyber-dark border border-neon-blue rounded-md shadow-lg z-10">
+              <div className="p-2 border-b border-neon-blue">
+                <p className="text-xs text-neon-green">Connected to {networkName || 'Aptos'}</p>
+                <p className="text-xs text-neon-blue truncate">{walletAddress}</p>
               </div>
+              <button
+                className="w-full text-left p-2 hover:bg-cyber-dark-hover text-neon-pink"
+                onClick={handleDisconnect}
+              >
+                Disconnect
+              </button>
             </div>
           )}
-        </>
+        </div>
       ) : (
-        <button 
+        <button
+          className="cyber-button-small border-neon-blue"
           onClick={handleConnect}
-          disabled={isLoading}
-          className={`cyber-button neon-border-green text-glow-green ${isLoading ? 'opacity-70' : 'hover:bg-opacity-30'}`}
+          disabled={isLoading || !isPetraInstalled()}
         >
-          {isLoading ? (
-            <div className="flex items-center justify-center">
-              <div className="cyber-loading w-5 h-5 mr-2"></div>
-              Connecting...
-            </div>
-          ) : (
-            <>
-              <span className="mr-2">🔌</span>
-              Connect Wallet
-            </>
-          )}
+          {isLoading ? 'Connecting...' : 'Connect Wallet'}
         </button>
+      )}
+      
+      {!isPetraInstalled() && (
+        <p className="text-xs text-neon-pink mt-1">
+          Petra wallet not detected. Please install it.
+        </p>
       )}
     </div>
   );

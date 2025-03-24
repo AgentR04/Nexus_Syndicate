@@ -60,7 +60,7 @@ const Navbar: React.FC<NavbarProps> = ({
                 to="/dashboard"
                 className={`font-cyber ${
                   isActive("/dashboard")
-                    ? "text-neon-green border-b-2 border-neon-green"
+                    ? "text-neon-green border-b-2 px-3 py-1 border-neon-green"
                     : "text-light-gray hover:text-neon-green"
                 }`}
               >
@@ -70,7 +70,7 @@ const Navbar: React.FC<NavbarProps> = ({
                 to="/profile"
                 className={`font-cyber ${
                   isActive("/profile")
-                    ? "text-neon-green border-b-2 border-neon-green"
+                    ? "text-neon-green border-b-2 px-3 py-1 border-neon-green"
                     : "text-light-gray hover:text-neon-green"
                 }`}
               >
@@ -80,13 +80,25 @@ const Navbar: React.FC<NavbarProps> = ({
           )}
 
           {/* Back arrow when on game map or syndicate management */}
-          {(location.pathname === "/map" || location.pathname === "/syndicate-management") && (
+          {(location.pathname === "/map" ||
+            location.pathname === "/syndicate-management") && (
             <button
               className="text-neon-blue hover:text-neon-purple"
               onClick={() => navigate(-1)}
             >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                className="h-6 w-6"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M10 19l-7-7m0 0l7-7m-7 7h18"
+                />
               </svg>
             </button>
           )}
@@ -110,7 +122,11 @@ const Navbar: React.FC<NavbarProps> = ({
             {onWalletConnect ? (
               <AptosWalletConnect onWalletConnect={handleWalletConnect} />
             ) : (
-              <AptosWalletConnect onWalletConnect={(address) => console.log("Wallet connected:", address)} />
+              <AptosWalletConnect
+                onWalletConnect={(address) =>
+                  console.log("Wallet connected:", address)
+                }
+              />
             )}
           </div>
 
@@ -143,10 +159,7 @@ const Navbar: React.FC<NavbarProps> = ({
         </div>
 
         {/* Mobile menu button */}
-        <button
-          className="md:hidden text-white"
-          onClick={toggleMobileMenu}
-        >
+        <button className="md:hidden text-white" onClick={toggleMobileMenu}>
           <svg
             className="w-6 h-6"
             fill="none"
@@ -158,7 +171,11 @@ const Navbar: React.FC<NavbarProps> = ({
               strokeLinecap="round"
               strokeLinejoin="round"
               strokeWidth={2}
-              d={mobileMenuOpen ? "M6 18L18 6M6 6l12 12" : "M4 6h16M4 12h16M4 18h16"}
+              d={
+                mobileMenuOpen
+                  ? "M6 18L18 6M6 6l12 12"
+                  : "M4 6h16M4 12h16M4 18h16"
+              }
             />
           </svg>
         </button>
@@ -167,42 +184,62 @@ const Navbar: React.FC<NavbarProps> = ({
         {mobileMenuOpen && (
           <div className="md:hidden absolute left-0 right-0 bg-dark-gray border-b border-neon-blue p-4 mt-4">
             <nav className="flex flex-col space-y-4">
-              <Link 
-                to="/dashboard" 
-                className={`${isActive('/dashboard') ? 'text-neon-green font-cyber' : 'text-light-gray hover:text-neon-green'} transition-colors font-cyber`}
+              <Link
+                to="/dashboard"
+                className={`${
+                  isActive("/dashboard")
+                    ? "text-neon-green font-cyber"
+                    : "text-light-gray hover:text-neon-green"
+                } transition-colors font-cyber`}
                 onClick={() => setMobileMenuOpen(false)}
               >
                 Dashboard
               </Link>
-              <Link 
-                to="/map" 
-                className={`${isActive('/map') ? 'text-neon-green font-cyber' : 'text-light-gray hover:text-neon-green'} transition-colors font-cyber`}
+              <Link
+                to="/map"
+                className={`${
+                  isActive("/map")
+                    ? "text-neon-green font-cyber"
+                    : "text-light-gray hover:text-neon-green"
+                } transition-colors font-cyber`}
                 onClick={() => setMobileMenuOpen(false)}
               >
                 Game Map
               </Link>
-              <Link 
-                to="/marketplace" 
-                className={`${isActive('/marketplace') ? 'text-neon-green font-cyber' : 'text-light-gray hover:text-neon-green'} transition-colors font-cyber`}
+              <Link
+                to="/marketplace"
+                className={`${
+                  isActive("/marketplace")
+                    ? "text-neon-green font-cyber"
+                    : "text-light-gray hover:text-neon-green"
+                } transition-colors font-cyber`}
                 onClick={() => setMobileMenuOpen(false)}
               >
                 Marketplace
               </Link>
-              <Link 
-                to="/syndicate-management" 
-                className={`${isActive('/syndicate-management') ? 'text-neon-green font-cyber' : 'text-light-gray hover:text-neon-green'} transition-colors font-cyber`}
+              <Link
+                to="/syndicate-management"
+                className={`${
+                  isActive("/syndicate-management")
+                    ? "text-neon-green font-cyber"
+                    : "text-light-gray hover:text-neon-green"
+                } transition-colors font-cyber`}
                 onClick={() => setMobileMenuOpen(false)}
               >
                 Syndicate
               </Link>
-              <Link 
-                to="/profile" 
-                className={`${isActive('/profile') ? 'text-neon-green font-cyber' : 'text-light-gray hover:text-neon-green'} transition-colors font-cyber`}
+              <Link
+                to="/profile"
+                className={`${
+                  isActive("/profile")
+                    ? "text-neon-green font-cyber"
+                    : "text-light-gray hover:text-neon-green"
+                } transition-colors font-cyber`}
                 onClick={() => setMobileMenuOpen(false)}
               >
                 Profile
               </Link>
-              
+
               {/* Wallet Connection (Mobile) */}
               <div className="pt-2">
                 {!walletAddress ? (
@@ -210,12 +247,19 @@ const Navbar: React.FC<NavbarProps> = ({
                     {onWalletConnect ? (
                       <AptosWalletConnect onWalletConnect={onWalletConnect} />
                     ) : (
-                      <AptosWalletConnect onWalletConnect={(address) => console.log("Wallet connected:", address)} />
+                      <AptosWalletConnect
+                        onWalletConnect={(address) =>
+                          console.log("Wallet connected:", address)
+                        }
+                      />
                     )}
                   </div>
                 ) : (
                   <div className="text-neon-blue font-cyber text-sm">
-                    {`${walletAddress.substring(0, 6)}...${walletAddress.substring(walletAddress.length - 4)}`}
+                    {`${walletAddress.substring(
+                      0,
+                      6
+                    )}...${walletAddress.substring(walletAddress.length - 4)}`}
                   </div>
                 )}
               </div>
@@ -223,7 +267,7 @@ const Navbar: React.FC<NavbarProps> = ({
           </div>
         )}
       </div>
-      
+
       {/* Secondary Navigation Bar */}
       <div className="bg-dark-gray border-b border-neon-purple">
         <div className="container mx-auto px-4 py-2">

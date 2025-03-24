@@ -1,5 +1,7 @@
 import { Territory, Agent, Player, BattleResult } from '../types/gameTypes';
 import battleService from './battleService';
+import authService from './authService';
+import firestoreService from './firestoreService';
 
 // Mock players for demonstration
 const mockPlayers: Player[] = [
@@ -376,11 +378,38 @@ class GameService {
 
   // Extract resources
   extractResources(territoryId: number, territories: Territory[]): void {
+    console.log('Extract resources called for territory:', territoryId);
+    
     const territory = territories.find(t => t.id === territoryId);
-    if (!territory || territory.owner !== 'player') return;
+    if (!territory || territory.owner !== 'player') {
+      console.log('Territory not found or not owned by player:', territory);
+      return;
+    }
     
     const currentPlayer = this.getCurrentPlayer();
-    if (!currentPlayer) return;
+    if (!currentPlayer) {
+      console.log('Current player not found');
+      return;
+    }
+    
+    console.log('Current player before extraction:', currentPlayer);
+    
+    // Get authenticated user from Firebase
+    const authenticatedUser = authService.getUser();
+    console.log('Authenticated user from authService:', authenticatedUser);
+    
+    if (!authenticatedUser || !authenticatedUser.id) {
+      console.log('No authenticated user found or missing ID, cannot update Firebase');
+      // Continue with local updates only
+    }
+    
+    // Calculate resource gains
+    const resourceGains: Record<string, number> = {};
+    territory.resources.forEach(resource => {
+      resourceGains[resource] = Math.floor(Math.random() * 10) + 5; // Random resource gain
+    });
+    
+    console.log('Resource gains:', resourceGains);
     
     // Update player resources based on territory resources
     const updatedPlayers = mockPlayers.map(player => {
@@ -390,9 +419,11 @@ class GameService {
         territory.resources.forEach(resource => {
           const resourceKey = resource as keyof typeof updatedResources;
           if (resourceKey in updatedResources) {
-            updatedResources[resourceKey] += Math.floor(Math.random() * 10) + 5; // Random resource gain
+            updatedResources[resourceKey] += resourceGains[resource] || 0;
           }
         });
+        
+        console.log('Updated resources:', updatedResources);
         
         return {
           ...player,
@@ -419,7 +450,63 @@ class GameService {
     // Also update the current player specifically
     const updatedCurrentPlayer = mockPlayers.find(p => p.id === this.currentPlayerId);
     if (updatedCurrentPlayer) {
+      console.log('Updated current player:', updatedCurrentPlayer);
       this.emit('player_updated', updatedCurrentPlayer);
+      
+      // Update Firebase if the user is authenticated
+      if (authenticatedUser && authenticatedUser.id) {
+        // First get the current user resources from Firebase
+        const currentUserResources = authenticatedUser.resources || {
+          credits: 0,
+          dataShards: 0,
+          syntheticAlloys: 0,
+          quantumCores: 0
+        };
+        
+        // Apply the same resource gains to the Firebase user
+        const updatedUserResources = { ...currentUserResources };
+        
+        // Update each resource that was gained
+        Object.keys(resourceGains).forEach(resource => {
+          const resourceKey = resource as keyof typeof updatedUserResources;
+          if (resourceKey in updatedUserResources) {
+            updatedUserResources[resourceKey] = 
+              (updatedUserResources[resourceKey] || 0) + (resourceGains[resource] || 0);
+          }
+        });
+        
+        console.log('Updating Firebase with resources:', updatedUserResources);
+        
+        // Update resources in Firebase
+        firestoreService.updateUserResources(authenticatedUser.id, updatedUserResources)
+          .then(success => {
+            console.log('Firebase update result:', success);
+            if (success) {
+              console.log('Resources updated in Firebase');
+              
+              // Update local user object with new resources
+              const updatedUser = {
+                ...authenticatedUser,
+                resources: updatedUserResources
+              };
+              
+              // Update local storage
+              localStorage.setItem('user', JSON.stringify(updatedUser));
+              
+              // Update the auth service's current user
+              Object.assign(authenticatedUser, updatedUser);
+            } else {
+              console.error('Failed to update resources in Firebase');
+            }
+          })
+          .catch(error => {
+            console.error('Error updating resources in Firebase:', error);
+          });
+      } else {
+        console.log('No authenticated user found or missing ID, cannot update Firebase');
+      }
+    } else {
+      console.log('Updated current player not found');
     }
   }
 

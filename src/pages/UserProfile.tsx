@@ -1,6 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Navbar from '../components/common/Navbar';
+import ImageWithFallback from '../components/common/ImageWithFallback';
+import firestoreService from '../services/firestoreService';
+import { getAccountResources, getAccountNFTs } from '../utils/aptosUtils';
+import { User } from '../models/User';
+import toast from 'react-hot-toast';
+import { RESOURCE_UPDATE_EVENT } from '../utils/resourceUtils';
 
 interface Achievement {
   id: number;
@@ -23,6 +29,13 @@ interface Badge {
   rarity: string;
 }
 
+interface Resource {
+  id: number;
+  name: string;
+  amount: number;
+  icon: string;
+}
+
 interface UserProfileProps {
   onLogout?: () => void;
 }
@@ -32,13 +45,17 @@ const UserProfile: React.FC<UserProfileProps> = ({ onLogout }) => {
   const [walletAddress, setWalletAddress] = useState<string>('');
   const [activeTab, setActiveTab] = useState<string>('profile');
   const [editMode, setEditMode] = useState<boolean>(false);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [userResources, setUserResources] = useState<any[]>([]);
+  const [userNFTs, setUserNFTs] = useState<any[]>([]);
   
-  // Mock user data
-  const [userData, setUserData] = useState({
+  // User data with default values
+  const [userData, setUserData] = useState<User>({
     username: 'NeonRunner',
-    avatar: '/avatars/elite_1.png',
+    walletAddress: '',
+    avatar: '/avatars/default.png',
     faction: 'NetStalkers',
-    bio: 'Veteran cyberpunk hacker with a knack for finding exploits in the system. Leading the NetStalkers to digital dominance.',
+    bio: 'Veteran cyberpunk hacker with a knack for finding exploits in the system.',
     joinDate: '2025-01-15',
     level: 42,
     reputation: 78,
@@ -149,6 +166,14 @@ const UserProfile: React.FC<UserProfileProps> = ({ onLogout }) => {
     { id: 5, type: 'Market Purchase', details: 'Purchased Advanced Encryption upgrade', timestamp: '2025-03-18 16:05' }
   ];
   
+  // Mock resources data - will be replaced with real data from blockchain
+  const [resources, setResources] = useState<Resource[]>([
+    { id: 1, name: 'Credits', amount: 0, icon: '/icons/credits.png' },
+    { id: 2, name: 'Data Shards', amount: 0, icon: '/icons/data_shard.png' },
+    { id: 3, name: 'Synthetic Alloys', amount: 0, icon: '/icons/alloy.png' },
+    { id: 4, name: 'Quantum Cores', amount: 0, icon: '/icons/quantum_core.png' }
+  ]);
+  
   const handleWalletConnect = (address: string) => {
     setWalletAddress(address);
   };
@@ -177,25 +202,58 @@ const UserProfile: React.FC<UserProfileProps> = ({ onLogout }) => {
     }));
   };
   
-  const handleSocialLinkChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target;
+  const handleSocialLinkChange = (platform: string, value: string) => {
     setUserData(prev => ({
       ...prev,
       socialLinks: {
-        ...prev.socialLinks,
-        [name]: value
+        ...(prev.socialLinks || { discord: '', twitter: '', telegram: '' }),
+        [platform]: value
       }
     }));
   };
   
+  const saveUserData = async () => {
+    if (!walletAddress) {
+      toast.error('Wallet address not found');
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      // Only update fields that can be edited
+      const userDataToUpdate = {
+        username: userData.username,
+        bio: userData.bio,
+        avatar: userData.avatar,
+        socialLinks: userData.socialLinks
+      };
+
+      // First get the user to get the ID
+      const user = await firestoreService.getUserByWalletAddress(walletAddress);
+      if (!user || !user.id) {
+        toast.error('User not found');
+        return;
+      }
+
+      await firestoreService.updateUserData(user.id, userDataToUpdate);
+      toast.success('Profile updated successfully');
+      setEditMode(false);
+    } catch (error) {
+      console.error('Error updating user data:', error);
+      toast.error('Failed to update profile');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handleSaveProfile = () => {
-    // In a real app, this would send data to a backend
-    setEditMode(false);
-    console.log('Profile saved:', userData);
+    saveUserData();
   };
   
   const calculateExpPercentage = () => {
-    return (userData.experience / userData.nextLevelExp) * 100;
+    const exp = userData.experience || 0;
+    const nextExp = userData.nextLevelExp || 1; // Avoid division by zero
+    return Math.min(Math.floor((exp / nextExp) * 100), 100);
   };
   
   const getRarityColor = (rarity: string) => {
@@ -215,6 +273,154 @@ const UserProfile: React.FC<UserProfileProps> = ({ onLogout }) => {
     }
   };
   
+  useEffect(() => {
+    const storedWalletAddress = localStorage.getItem('walletAddress');
+    if (storedWalletAddress) {
+      setWalletAddress(storedWalletAddress);
+    } else {
+      // Redirect to login if no wallet address is found
+      navigate('/login');
+      toast.error('Please connect your wallet to view your profile');
+    }
+  }, [navigate]);
+
+  useEffect(() => {
+    const fetchUserData = async () => {
+      setIsLoading(true);
+      try {
+        // Use getUserByWalletAddress instead of getUserDoc
+        const user = await firestoreService.getUserByWalletAddress(walletAddress);
+        if (user) {
+          setUserData({
+            ...userData,
+            ...user,
+            // Ensure these fields exist even if not in the database
+            bio: user.bio || userData.bio,
+            level: user.level || userData.level,
+            reputation: user.reputation || userData.reputation,
+            experience: user.experience || userData.experience,
+            nextLevelExp: user.nextLevelExp || userData.nextLevelExp,
+            socialLinks: {
+              discord: user.socialLinks?.discord || userData.socialLinks?.discord || '',
+              twitter: user.socialLinks?.twitter || userData.socialLinks?.twitter || '',
+              telegram: user.socialLinks?.telegram || userData.socialLinks?.telegram || ''
+            }
+          });
+        } else {
+          toast.error('User data not found');
+        }
+      } catch (error) {
+        console.error(error);
+        toast.error('Failed to fetch user data');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    
+    const fetchBlockchainResources = async () => {
+      setIsLoading(true);
+      try {
+        const blockchainResources = await getAccountResources(walletAddress);
+        const nfts = await getAccountNFTs(walletAddress);
+        
+        // Update resources with blockchain data
+        setUserResources(blockchainResources);
+        setUserNFTs(nfts);
+        
+        // Update the resources state with blockchain data
+        const updatedResources = [...resources];
+        
+        // Map blockchain resources to UI resources
+        if (blockchainResources && blockchainResources.length > 0) {
+          // This is a simplified example - adjust based on actual blockchain data structure
+          blockchainResources.forEach((resource: any) => {
+            if (resource.type && resource.data) {
+              if (resource.type.includes('Credits')) {
+                updatedResources[0].amount = parseInt(resource.data.value || '0');
+              } else if (resource.type.includes('DataShards')) {
+                updatedResources[1].amount = parseInt(resource.data.value || '0');
+              } else if (resource.type.includes('SyntheticAlloys')) {
+                updatedResources[2].amount = parseInt(resource.data.value || '0');
+              } else if (resource.type.includes('QuantumCores')) {
+                updatedResources[3].amount = parseInt(resource.data.value || '0');
+              }
+            }
+          });
+        }
+        
+        // If user has resources data in Firebase, use that as a fallback
+        if (userData.resources) {
+          if (updatedResources[0].amount === 0) updatedResources[0].amount = userData.resources.credits;
+          if (updatedResources[1].amount === 0) updatedResources[1].amount = userData.resources.dataShards;
+          if (updatedResources[2].amount === 0) updatedResources[2].amount = userData.resources.syntheticAlloys;
+          if (updatedResources[3].amount === 0) updatedResources[3].amount = userData.resources.quantumCores;
+        }
+        
+        setResources(updatedResources);
+      } catch (error) {
+        console.error(error);
+        toast.error('Failed to fetch blockchain resources');
+        
+        // If blockchain fetch fails, use Firebase data as fallback
+        if (userData.resources) {
+          const updatedResources = [...resources];
+          updatedResources[0].amount = userData.resources.credits;
+          updatedResources[1].amount = userData.resources.dataShards;
+          updatedResources[2].amount = userData.resources.syntheticAlloys;
+          updatedResources[3].amount = userData.resources.quantumCores;
+          setResources(updatedResources);
+        }
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    
+    if (walletAddress) {
+      fetchUserData();
+      fetchBlockchainResources();
+    }
+  }, [walletAddress, userData.resources, resources, userData]);
+
+  useEffect(() => {
+    const handleResourceUpdate = (event: CustomEvent) => {
+      console.log('Resource update event received in UserProfile:', event.detail);
+      const { resources } = event.detail;
+      
+      if (resources) {
+        // Map Firebase resource structure to UI resource structure
+        const updatedResources = [
+          { id: 1, name: 'Credits', amount: resources.credits || 0, icon: '/icons/credits.png' },
+          { id: 2, name: 'Data Shards', amount: resources.dataShards || 0, icon: '/icons/data_shard.png' },
+          { id: 3, name: 'Synthetic Alloys', amount: resources.syntheticAlloys || 0, icon: '/icons/alloy.png' },
+          { id: 4, name: 'Quantum Cores', amount: resources.quantumCores || 0, icon: '/icons/quantum_core.png' }
+        ];
+        
+        console.log('Updating UI resources:', updatedResources);
+        setResources(updatedResources);
+        
+        // Also update the userData state to keep it in sync
+        setUserData(prevUserData => ({
+          ...prevUserData,
+          resources
+        }));
+      }
+    };
+    
+    // Add event listener
+    document.addEventListener(
+      RESOURCE_UPDATE_EVENT, 
+      handleResourceUpdate as EventListener
+    );
+    
+    // Clean up event listener on component unmount
+    return () => {
+      document.removeEventListener(
+        RESOURCE_UPDATE_EVENT, 
+        handleResourceUpdate as EventListener
+      );
+    };
+  }, []);
+
   return (
     <div className="min-h-screen bg-dark-blue text-light-gray">
       <Navbar />
@@ -225,7 +431,7 @@ const UserProfile: React.FC<UserProfileProps> = ({ onLogout }) => {
           <div className="col-span-12 md:col-span-4 lg:col-span-3">
             <div className="cyber-panel p-6 flex flex-col items-center">
               <div className="relative mb-4">
-                <img 
+                <ImageWithFallback 
                   src={userData.avatar || '/avatars/default.png'} 
                   alt="User Avatar" 
                   className="w-32 h-32 rounded-full border-4 border-neon-blue object-cover"
@@ -256,10 +462,10 @@ const UserProfile: React.FC<UserProfileProps> = ({ onLogout }) => {
               </div>
               
               <button
-                onClick={toggleEditMode}
+                onClick={editMode ? handleSaveProfile : toggleEditMode}
                 className="cyber-button-small bg-neon-blue bg-opacity-20 border border-neon-blue text-neon-blue hover:bg-opacity-30 w-full"
               >
-                {editMode ? 'Cancel Edit' : 'Edit Profile'}
+                {editMode ? 'Save Profile' : 'Edit Profile'}
               </button>
               
               <button
@@ -279,53 +485,53 @@ const UserProfile: React.FC<UserProfileProps> = ({ onLogout }) => {
                     <label className="text-sm text-neon-green block mb-1">Discord</label>
                     <input
                       type="text"
-                      name="discord"
-                      value={userData.socialLinks.discord}
-                      onChange={handleSocialLinkChange}
-                      className="w-full bg-dark-gray border border-neon-blue p-2 text-light-gray rounded"
+                      id="discord"
+                      className="bg-dark-gray text-light-gray border border-neon-blue p-2 rounded w-full"
+                      value={userData.socialLinks?.discord || ''}
+                      onChange={(e) => handleSocialLinkChange('discord', e.target.value)}
                     />
                   </div>
                   <div>
                     <label className="text-sm text-neon-green block mb-1">Twitter</label>
                     <input
                       type="text"
-                      name="twitter"
-                      value={userData.socialLinks.twitter}
-                      onChange={handleSocialLinkChange}
-                      className="w-full bg-dark-gray border border-neon-blue p-2 text-light-gray rounded"
+                      id="twitter"
+                      className="bg-dark-gray text-light-gray border border-neon-blue p-2 rounded w-full"
+                      value={userData.socialLinks?.twitter || ''}
+                      onChange={(e) => handleSocialLinkChange('twitter', e.target.value)}
                     />
                   </div>
                   <div>
                     <label className="text-sm text-neon-green block mb-1">Telegram</label>
                     <input
                       type="text"
-                      name="telegram"
-                      value={userData.socialLinks.telegram}
-                      onChange={handleSocialLinkChange}
-                      className="w-full bg-dark-gray border border-neon-blue p-2 text-light-gray rounded"
+                      id="telegram"
+                      className="bg-dark-gray text-light-gray border border-neon-blue p-2 rounded w-full"
+                      value={userData.socialLinks?.telegram || ''}
+                      onChange={(e) => handleSocialLinkChange('telegram', e.target.value)}
                     />
                   </div>
-                  <button
-                    onClick={handleSaveProfile}
-                    className="cyber-button-small bg-neon-green bg-opacity-20 border border-neon-green text-neon-green hover:bg-opacity-30 w-full mt-3"
-                  >
-                    Save Changes
-                  </button>
                 </div>
               ) : (
                 <div className="space-y-2">
-                  <div className="flex items-center">
-                    <span className="text-neon-purple mr-2">Discord:</span>
-                    <span>{userData.socialLinks.discord}</span>
-                  </div>
-                  <div className="flex items-center">
-                    <span className="text-neon-purple mr-2">Twitter:</span>
-                    <span>{userData.socialLinks.twitter}</span>
-                  </div>
-                  <div className="flex items-center">
-                    <span className="text-neon-purple mr-2">Telegram:</span>
-                    <span>{userData.socialLinks.telegram}</span>
-                  </div>
+                  {userData.socialLinks?.discord && (
+                    <div className="flex items-center mb-2">
+                      <i className="fab fa-discord text-neon-purple mr-2"></i>
+                      <span className="text-sm">{userData.socialLinks.discord}</span>
+                    </div>
+                  )}
+                  {userData.socialLinks?.twitter && (
+                    <div className="flex items-center mb-2">
+                      <i className="fab fa-twitter text-neon-blue mr-2"></i>
+                      <span className="text-sm">{userData.socialLinks.twitter}</span>
+                    </div>
+                  )}
+                  {userData.socialLinks?.telegram && (
+                    <div className="flex items-center">
+                      <i className="fab fa-telegram text-neon-blue mr-2"></i>
+                      <span className="text-sm">{userData.socialLinks.telegram}</span>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -360,6 +566,12 @@ const UserProfile: React.FC<UserProfileProps> = ({ onLogout }) => {
                 className={`px-4 py-2 font-cyber ${activeTab === 'badges' ? 'text-neon-blue border-b-2 border-neon-blue' : 'text-light-gray'}`}
               >
                 BADGES
+              </button>
+              <button
+                onClick={() => handleTabChange('resources')}
+                className={`px-4 py-2 font-cyber ${activeTab === 'resources' ? 'text-neon-blue border-b-2 border-neon-blue' : 'text-light-gray'}`}
+              >
+                RESOURCES
               </button>
               <button
                 onClick={() => handleTabChange('history')}
@@ -521,6 +733,69 @@ const UserProfile: React.FC<UserProfileProps> = ({ onLogout }) => {
                       </div>
                     ))}
                   </div>
+                </div>
+              )}
+              
+              {/* Resources Tab */}
+              {activeTab === 'resources' && (
+                <div>
+                  <h3 className="text-xl text-neon-blue mb-4">Resources</h3>
+                  
+                  {isLoading ? (
+                    <div className="flex justify-center items-center h-40">
+                      <div className="cyber-spinner"></div>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                      {resources.map((resource) => (
+                        <div key={resource.id} className="cyber-panel p-4 flex flex-col items-center">
+                          <ImageWithFallback
+                            src={resource.icon}
+                            alt={resource.name}
+                            className="w-12 h-12 mb-2"
+                          />
+                          <div className="text-center">
+                            <div className="text-neon-blue">{resource.name}</div>
+                            <div className="text-xl text-neon-green">{resource.amount}</div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  
+                  <h3 className="text-xl text-neon-blue mt-8 mb-4">NFTs & Digital Assets</h3>
+                  
+                  {isLoading ? (
+                    <div className="flex justify-center items-center h-40">
+                      <div className="cyber-spinner"></div>
+                    </div>
+                  ) : userNFTs && userNFTs.length > 0 ? (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                      {userNFTs.map((nft: any, index: number) => (
+                        <div key={index} className="cyber-panel p-4">
+                          <div className="aspect-square mb-2 overflow-hidden">
+                            <ImageWithFallback
+                              src={nft.uri || '/images/nft_placeholder.png'}
+                              alt={nft.name || 'NFT'}
+                              className="w-full h-full object-cover"
+                            />
+                          </div>
+                          <div className="text-neon-purple font-bold">{nft.name || `NFT #${index + 1}`}</div>
+                          <div className="text-sm text-light-gray truncate">{nft.description || 'No description available'}</div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="cyber-panel p-6 text-center">
+                      <p className="text-light-gray">No NFTs found in your wallet.</p>
+                      <button 
+                        onClick={() => navigate('/marketplace')}
+                        className="cyber-button-small bg-neon-purple bg-opacity-20 border border-neon-purple text-neon-purple hover:bg-opacity-30 mt-4"
+                      >
+                        Browse Marketplace
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
               

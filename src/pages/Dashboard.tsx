@@ -13,6 +13,28 @@ import {
 } from "../components/dashboard";
 import { useGame } from "../context/GameContext";
 import gameService from "../services/gameService";
+import authService from "../services/authService";
+import firestoreService from "../services/firestoreService";
+import gameDataService from "../services/gameDataService";
+import toast from "react-hot-toast";
+import { User } from "../models/User";
+import { FirestoreFaction } from "../services/gameDataService";
+
+// Define types for activities and missions
+interface Activity {
+  id: number;
+  type: "mission" | "transaction" | "syndicate" | "other";
+  description: string;
+  timestamp: string;
+}
+
+interface Mission {
+  id: number;
+  title: string;
+  description: string;
+  difficulty: "Easy" | "Medium" | "Hard";
+  reward: number;
+}
 
 const Dashboard: React.FC = () => {
   const navigate = useNavigate();
@@ -20,212 +42,136 @@ const Dashboard: React.FC = () => {
   const [showLeaderboard, setShowLeaderboard] = useState<boolean>(false);
   const [showNotifications, setShowNotifications] = useState<boolean>(false);
   const [showAchievements, setShowAchievements] = useState<boolean>(false);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [userData, setUserData] = useState<User | null>(null);
+  const [userFaction, setUserFaction] = useState<FirestoreFaction | null>(null);
 
   // Get real-time game data from context
   const { currentPlayer, territories, agents, gameEvents, players } = useGame();
 
-  // Initialize player data from game context
+  // Initialize player data from user data
   const [playerData, setPlayerData] = useState({
-    name: "NeonHunter",
-    username: "NeonHunter_42",
+    name: "",
+    username: "",
     avatar: "https://via.placeholder.com/150",
-    level: 42,
-    reputation: 78,
-    syndicate: "Quantum Syndicate",
-    faction: "Quantum Syndicate",
-    credits: 15750,
-    dataShards: 8920,
+    level: 1,
+    reputation: 0,
+    syndicate: "",
+    faction: "",
+    credits: 0,
+    dataShards: 0,
     syntheticAlloys: 0,
     quantumCores: 0,
-    influence: 6540,
-    territories: 7,
-    agents: 12,
-    nextLevelXP: 75000,
-    currentXP: 62500,
+    influence: 0,
+    territories: 0,
+    agents: 0,
+    nextLevelXP: 1000,
+    currentXP: 0,
     skills: {
-      hacking: 85,
-      combat: 65,
-      trading: 72,
+      hacking: 10,
+      combat: 10,
+      trading: 10,
     },
     assets: {
-      properties: 3,
-      vehicles: 5,
-      nfts: 12,
+      properties: 0,
+      vehicles: 0,
+      nfts: 0,
     },
     missions: {
-      completed: 48,
-      failed: 12,
-      total: 60,
+      completed: 0,
+      failed: 0,
+      total: 0,
     },
     notifications: [
       {
         id: 1,
-        type: "alert",
-        message: "Your territory in Sector 7 is under attack!",
-        time: "10 minutes ago",
-      },
-      {
-        id: 2,
         type: "info",
-        message: "Market prices for Quantum Cores have increased by 15%",
-        time: "1 hour ago",
-      },
-      {
-        id: 3,
-        type: "success",
-        message: "Agent deployment in Sector 12 successful",
-        time: "3 hours ago",
-      },
-      {
-        id: 4,
-        type: "info",
-        message: "New governance proposal available for voting",
-        time: "5 hours ago",
-      },
+        message: "Welcome to Nexus Syndicate!",
+        time: "Just now",
+      }
     ],
     achievements: [
       {
         id: 1,
-        title: "Territory Dominator",
-        description: "Control 10 territories simultaneously",
-        progress: 80,
-        reward: "500 Credits + Unique Badge",
-        completed: false,
-        category: "territory",
-      },
-      {
-        id: 2,
-        title: "Resource Baron",
-        description: "Accumulate 10,000 Data Shards",
-        progress: 65,
-        reward: "3 Quantum Cores",
-        completed: false,
-        category: "resources",
-      },
-      {
-        id: 3,
-        title: "Master Strategist",
-        description: "Win 50 strategic battles",
+        title: "New Recruit",
+        description: "Join Nexus Syndicate",
         progress: 100,
-        reward: "Legendary AI Agent Blueprint",
+        reward: "100 Credits",
         completed: true,
-        category: "combat",
-      },
-      {
-        id: 4,
-        title: "Tech Innovator",
-        description: "Research all Tier 1 technologies",
-        progress: 90,
-        reward: "Advanced Research Terminal",
-        completed: false,
-        category: "technology",
-      },
-      {
-        id: 5,
-        title: "Syndicate Leader",
-        description: "Lead a syndicate of 20+ members",
-        progress: 100,
-        reward: "Unique Syndicate Emblem",
-        completed: true,
-        category: "social",
-      },
+        category: "general",
+      }
     ],
-    recentActivity: [
-      {
-        id: 1,
-        type: "mission",
-        description: "Completed mission 'Sector 7 Infiltration'",
-        timestamp: "10 minutes ago",
-      },
-      {
-        id: 2,
-        type: "transaction",
-        description: "Received 1000 credits from syndicate funds",
-        timestamp: "1 hour ago",
-      },
-      {
-        id: 3,
-        type: "syndicate",
-        description: "Promoted to syndicate leader",
-        timestamp: "3 hours ago",
-      },
-    ],
-    availableMissions: [
-      {
-        id: 1,
-        title: "Sector 7 Infiltration",
-        description: "Infiltrate Sector 7 and gather intel on enemy operations",
-        difficulty: "Easy",
-        reward: 500,
-      },
-      {
-        id: 2,
-        title: "Quantum Core Heist",
-        description: "Steal a shipment of Quantum Cores from an enemy convoy",
-        difficulty: "Medium",
-        reward: 1000,
-      },
-    ],
+    recentActivity: [] as Activity[],
+    availableMissions: [] as Mission[],
     miniGames: {
-      smugglersRun: 1000,
+      smugglersRun: 0,
       cryptoMiner: 0,
       hackerWars: 0,
     },
   });
 
+  useEffect(() => {
+    const fetchUserData = async () => {
+      try {
+        // Get current user from authService
+        const user = authService.getUser();
+        if (user) {
+          // Get user's faction data
+          if (user.faction) {
+            try {
+              const factionData = await gameDataService.getFactionById(user.faction);
+              if (factionData) {
+                setUserFaction(factionData);
+              }
+            } catch (error) {
+              console.error("Error fetching faction data:", error);
+            }
+          }
+          
+          // Update player data with user information
+          setUserData(user);
+          setPlayerData({
+            ...playerData,
+            name: user.username || "",
+            username: user.username || "",
+            avatar: user.avatar ? `/images/avatars/${user.avatar}.jpg` : "https://via.placeholder.com/150",
+            faction: userFaction?.name || "",
+            credits: user.resources?.credits || 0,
+            dataShards: user.resources?.dataShards || 0,
+            syntheticAlloys: user.resources?.syntheticAlloys || 0,
+            quantumCores: user.resources?.quantumCores || 0,
+          });
+          
+          // Set wallet address
+          setWalletAddress(user.walletAddress || "");
+        } else {
+          // If no user is logged in, redirect to login page
+          navigate('/login');
+        }
+      } catch (error) {
+        console.error("Error fetching user data:", error);
+        toast.error("Failed to fetch user data");
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchUserData();
+  }, [navigate, userFaction, playerData]);
+
   // Update player data when game state changes
   useEffect(() => {
     if (currentPlayer) {
-      const playerTerritories = territories.filter(
-        (t) => t.owner === "player"
-      ).length;
-      const playerAgents = agents.filter(
-        (a) => a.location !== "undeployed"
-      ).length;
-
-      // Convert game events to notifications
-      const recentNotifications = gameEvents.slice(0, 5).map((event) => ({
-        id: parseInt(event.id) || Math.floor(Math.random() * 1000), // Convert string ID to number
-        type: event.type.includes("attack")
-          ? "alert"
-          : event.type.includes("resource")
-          ? "success"
-          : "info",
-        message: event.message || `Event: ${event.type}`,
-        time: new Date(event.timestamp).toLocaleTimeString(),
-      }));
-
-      setPlayerData((prev) => ({
+      // Update player data with game state
+      setPlayerData(prev => ({
         ...prev,
-        name: currentPlayer.name,
-        username: currentPlayer.username || prev.username,
-        avatar: currentPlayer.avatar || prev.avatar,
-        level: currentPlayer.level || prev.level,
-        reputation: currentPlayer.reputation || prev.reputation,
-        syndicate: currentPlayer.syndicate || prev.syndicate,
-        faction: currentPlayer.faction,
         credits: currentPlayer.resources.credits,
         dataShards: currentPlayer.resources.dataShards,
         syntheticAlloys: currentPlayer.resources.syntheticAlloys,
-        quantumCores: currentPlayer.resources.quantumCores,
-        territories: playerTerritories,
-        agents: playerAgents,
-        nextLevelXP: currentPlayer.nextLevelXP || prev.nextLevelXP,
-        currentXP: currentPlayer.currentXP || prev.currentXP,
-        skills: currentPlayer.skills || prev.skills,
-        assets: currentPlayer.assets || prev.assets,
-        missions: currentPlayer.missions || prev.missions,
-        notifications:
-          recentNotifications.length > 0
-            ? recentNotifications
-            : prev.notifications,
-        achievements: prev.achievements, // Keep existing achievements
-        recentActivity: prev.recentActivity,
-        availableMissions: prev.availableMissions,
-        miniGames: prev.miniGames,
+        quantumCores: currentPlayer.resources.quantumCores
       }));
     }
-  }, [currentPlayer, territories, agents, gameEvents]);
+  }, [currentPlayer]);
 
   // Start game service when dashboard loads
   useEffect(() => {
@@ -657,7 +603,7 @@ const Dashboard: React.FC = () => {
 
               <button
                 onClick={() => navigate("/smugglers-run")}
-                className="w-full py-2 bg-neon-green bg-opacity-20 hover:bg-opacity-30 text-neon-green border border-neon-green rounded font-cyber text-sm transition-all"
+                className="w-full py-2 bg-neon-green text-xs text-black font-cyber rounded hover:bg-neon-purple transition-colors"
               >
                 PLAY NOW
               </button>

@@ -24,49 +24,86 @@ import Multiplayer from "./pages/Multiplayer";
 
 function App() {
   const [walletAddress, setWalletAddress] = useState<string>(
-    authService.getWalletAddress()
+    authService.getUser()?.walletAddress || ""
   );
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(
-    authService.isAuthenticated()
+    authService.isUserAuthenticated()
   );
   const [username, setUsername] = useState<string>(
     authService.getUser()?.username || ""
   );
+  const [isLoading, setIsLoading] = useState<boolean>(false);
 
   // Initialize state from auth service
   useEffect(() => {
-    setIsAuthenticated(authService.isAuthenticated());
-    setWalletAddress(authService.getWalletAddress());
+    setIsAuthenticated(authService.isUserAuthenticated());
     const user = authService.getUser();
     if (user) {
       setUsername(user.username);
+      setWalletAddress(user.walletAddress || "");
     }
   }, []);
 
-  const handleWalletConnect = (address: string) => {
+  const handleWalletConnect = async (address: string) => {
+    if (!address) return;
+    
+    setIsLoading(true);
     setWalletAddress(address);
-    authService.saveWalletAddress(address);
 
-    // If a wallet is connected but not authenticated, create a user
-    if (!isAuthenticated) {
-      authService.signIn(`Player_${address.substring(0, 6)}`, "");
-      setIsAuthenticated(true);
-      setUsername(`Player_${address.substring(0, 6)}`);
+    try {
+      // Check if wallet is already registered
+      const isRegistered = await authService.isWalletRegistered(address);
+      
+      if (isRegistered) {
+        // If wallet is registered, sign in with it
+        const success = await authService.signInWithWallet(address);
+        if (success) {
+          const user = authService.getUser();
+          if (user) {
+            setUsername(user.username);
+            setIsAuthenticated(true);
+          }
+        }
+      } else if (!isAuthenticated) {
+        // If wallet is not registered and user is not authenticated,
+        // redirect to signup page
+        window.location.href = "/signup";
+      }
+    } catch (error) {
+      console.error("Error connecting wallet:", error);
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const handleSignIn = (username: string, walletAddress: string) => {
-    // Authenticate user with wallet address if available
-    const success = authService.signIn(username, "", walletAddress);
-    if (success) {
-      setIsAuthenticated(true);
-      setUsername(username);
+  const handleSignIn = async (username: string, email: string) => {
+    setIsLoading(true);
+    try {
+      // Authenticate user with email
+      const success = await authService.signIn(email, "");
+      if (success) {
+        setIsAuthenticated(true);
+        const user = authService.getUser();
+        if (user) {
+          setUsername(user.username);
+          setWalletAddress(user.walletAddress || "");
+        }
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error("Error signing in:", error);
+      return false;
+    } finally {
+      setIsLoading(false);
     }
   };
 
   const handleSignOut = () => {
     authService.signOut();
     setIsAuthenticated(false);
+    setUsername("");
+    setWalletAddress("");
   };
 
   return (
@@ -78,10 +115,13 @@ function App() {
               path="/signup"
               element={<SignUp
                 onSignUp={(username) => {
-                  // Create a new account when user completes the sign up process
-                  authService.signIn(username, "");
+                  // User is already signed up and authenticated in the SignUp component
                   setIsAuthenticated(true);
                   setUsername(username);
+                  const user = authService.getUser();
+                  if (user?.walletAddress) {
+                    setWalletAddress(user.walletAddress);
+                  }
                 }}
               />}
             />
@@ -96,24 +136,45 @@ function App() {
                       </h2>
                       <div className="space-y-6">
                         <div className="text-center text-light-gray mb-6">
-                          <p>Connect your wallet to sign in to Nexus Syndicates</p>
+                          <p>Connect your Petra wallet to sign in to Nexus Syndicates</p>
                         </div>
                         
-                        {walletAddress ? (
+                        {isLoading ? (
+                          <div className="text-center text-neon-blue">
+                            <p className="animate-pulse">Connecting...</p>
+                          </div>
+                        ) : walletAddress ? (
                           <>
                             <div className="text-center text-neon-green mb-4 p-3 bg-dark-blue/50 rounded-md">
                               <p>Wallet connected: {walletAddress.substring(0, 6)}...{walletAddress.substring(walletAddress.length - 4)}</p>
                             </div>
                             <button
-                              onClick={() => {
+                              onClick={async () => {
+                                setIsLoading(true);
                                 // Use wallet address to authenticate
-                                handleSignIn(`Player_${walletAddress.substring(0, 6)}`, walletAddress);
-                                // Redirect to dashboard
-                                window.location.href = "/dashboard";
+                                const success = await authService.signInWithWallet(walletAddress);
+                                if (success) {
+                                  const user = authService.getUser();
+                                  if (user) {
+                                    setUsername(user.username);
+                                    setIsAuthenticated(true);
+                                  }
+                                  // Redirect to dashboard
+                                  window.location.href = "/dashboard";
+                                } else {
+                                  // If wallet is not registered, redirect to signup
+                                  window.location.href = "/signup";
+                                }
+                                setIsLoading(false);
                               }}
                               className="w-full px-4 py-2 bg-neon-blue text-dark-blue hover:bg-neon-blue-bright transition-colors rounded font-cyber"
+                              disabled={isLoading}
                             >
-                              ENTER NEXUS SYNDICATES
+                              {isLoading ? (
+                                <span className="animate-pulse">Processing...</span>
+                              ) : (
+                                "ENTER NEXUS SYNDICATES"
+                              )}
                             </button>
                           </>
                         ) : (

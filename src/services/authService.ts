@@ -1,116 +1,188 @@
 // Authentication service for Nexus Syndicate
 // Handles user authentication, storage, and session management
 
-export interface User {
-  username: string;
-  email?: string;
-  walletAddress?: string;
-  faction?: string;
-  resources?: {
-    credits: number;
-    dataShards: number;
-    syntheticAlloys: number;
-    quantumCores: number;
-  };
-}
+import { User, UserCredential } from '../models/User';
+import firestoreService from './firestoreService';
 
 class AuthService {
-  private storagePrefix = 'nexus_syndicate_';
-  
-  // Store user data in local storage
-  saveUser(user: User): void {
-    localStorage.setItem(`${this.storagePrefix}user`, JSON.stringify(user));
-    this.setAuthenticated(true);
+  private currentUser: User | null = null;
+  private isAuthenticated: boolean = false;
+
+  constructor() {
+    this.loadUserFromLocalStorage();
   }
-  
-  // Get user data from local storage
-  getUser(): User | null {
-    const userData = localStorage.getItem(`${this.storagePrefix}user`);
-    if (userData) {
-      return JSON.parse(userData);
-    }
-    return null;
-  }
-  
-  // Set authentication status
-  setAuthenticated(status: boolean): void {
-    localStorage.setItem(`${this.storagePrefix}authenticated`, status.toString());
-  }
-  
-  // Check if user is authenticated
-  isAuthenticated(): boolean {
-    return localStorage.getItem(`${this.storagePrefix}authenticated`) === 'true';
-  }
-  
-  // Store wallet address
-  saveWalletAddress(address: string): void {
-    localStorage.setItem(`${this.storagePrefix}wallet`, address);
+
+  /**
+   * Load user data from localStorage on service initialization
+   */
+  private loadUserFromLocalStorage() {
+    const userJson = localStorage.getItem('user');
+    const authenticated = localStorage.getItem('authenticated');
     
-    // Update user data if it exists
-    const user = this.getUser();
-    if (user) {
-      user.walletAddress = address;
-      this.saveUser(user);
-    }
-  }
-  
-  // Get wallet address
-  getWalletAddress(): string {
-    return localStorage.getItem(`${this.storagePrefix}wallet`) || '';
-  }
-  
-  // Sign in user
-  signIn(username: string, password: string, walletAddress?: string): boolean {
-    // In a real app, you would validate against a backend
-    // For demo purposes, we'll just accept any credentials
-    
-    // Create a new user if one doesn't exist
-    if (!this.getUser()) {
-      const newUser: User = {
-        username,
-        walletAddress: walletAddress || this.getWalletAddress(),
-        faction: 'Netrunners', // Default faction
-        resources: {
-          credits: 1000,
-          dataShards: 50,
-          syntheticAlloys: 30,
-          quantumCores: 15
-        }
-      };
-      this.saveUser(newUser);
-    } else {
-      // Update username and wallet if user exists
-      const user = this.getUser();
-      if (user) {
-        user.username = username;
-        if (walletAddress) {
-          user.walletAddress = walletAddress;
-        }
-        this.saveUser(user);
+    if (userJson) {
+      try {
+        this.currentUser = JSON.parse(userJson);
+        this.isAuthenticated = authenticated === 'true';
+      } catch (error) {
+        console.error('Error parsing user from localStorage:', error);
+        this.currentUser = null;
+        this.isAuthenticated = false;
       }
     }
-    
-    this.setAuthenticated(true);
-    return true;
   }
-  
-  // Sign out user
-  signOut(): void {
-    this.setAuthenticated(false);
-    // We keep the user data for convenience, but you could clear it if needed
-    // localStorage.removeItem(`${this.storagePrefix}user`);
-  }
-  
-  // Update user data
-  updateUser(userData: Partial<User>): void {
-    const currentUser = this.getUser();
-    if (currentUser) {
-      const updatedUser = { ...currentUser, ...userData };
-      this.saveUser(updatedUser);
+
+  /**
+   * Save user data to localStorage for session persistence
+   */
+  private saveUserToLocalStorage() {
+    if (this.currentUser) {
+      localStorage.setItem('user', JSON.stringify(this.currentUser));
+      localStorage.setItem('authenticated', String(this.isAuthenticated));
+    } else {
+      localStorage.removeItem('user');
+      localStorage.removeItem('authenticated');
     }
+  }
+
+  /**
+   * Check if a wallet address is already registered
+   */
+  async isWalletRegistered(walletAddress: string): Promise<boolean> {
+    if (!walletAddress) return false;
+    return await firestoreService.isWalletRegistered(walletAddress);
+  }
+
+  /**
+   * Sign in with wallet address
+   */
+  async signInWithWallet(walletAddress: string): Promise<boolean> {
+    if (!walletAddress) return false;
+    
+    try {
+      // Check if user exists in Firestore
+      const user = await firestoreService.getUserByWalletAddress(walletAddress);
+      
+      if (user) {
+        // Update last login time
+        await firestoreService.updateUserLastLogin(user.id);
+        
+        // Set user in local state
+        this.currentUser = user;
+        this.setAuthenticated(true);
+        this.saveUserToLocalStorage();
+        return true;
+      }
+      
+      return false;
+    } catch (error) {
+      console.error('Error signing in with wallet:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Sign in with email and password
+   */
+  async signIn(email: string, password: string): Promise<boolean> {
+    // For demo purposes, we're not implementing real password auth
+    // In a real app, you would verify credentials with Firebase Auth
+    
+    try {
+      // Query users by email
+      // This is a simplified version - in a real app, use Firebase Auth
+      const users = await firestoreService.getUserByEmail(email);
+      
+      if (users) {
+        // Update last login time
+        await firestoreService.updateUserLastLogin(users.id);
+        
+        // Set user in local state
+        this.currentUser = users;
+        this.setAuthenticated(true);
+        this.saveUserToLocalStorage();
+        return true;
+      }
+      
+      return false;
+    } catch (error) {
+      console.error('Error signing in:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Sign out the current user
+   */
+  signOut(): void {
+    this.currentUser = null;
+    this.setAuthenticated(false);
+    this.saveUserToLocalStorage();
+  }
+
+  /**
+   * Sign up a new user with wallet
+   */
+  async signUpWithWallet(userData: Partial<User>, walletAddress: string): Promise<boolean> {
+    if (!walletAddress || !userData.username || !userData.email) {
+      return false;
+    }
+
+    try {
+      // Check if wallet is already registered
+      const isRegistered = await this.isWalletRegistered(walletAddress);
+      
+      if (isRegistered) {
+        console.error('Wallet already registered');
+        return false;
+      }
+      
+      // Create new user in Firestore
+      const newUser = await firestoreService.createUser({
+        username: userData.username,
+        email: userData.email,
+        walletAddress: walletAddress,
+        faction: userData.faction,
+        playstyle: userData.playstyle,
+        avatar: userData.avatar
+      });
+      
+      if (newUser) {
+        // Set user in local state
+        this.currentUser = newUser;
+        this.setAuthenticated(true);
+        this.saveUserToLocalStorage();
+        return true;
+      }
+      
+      return false;
+    } catch (error) {
+      console.error('Error signing up with wallet:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Set authentication status
+   */
+  setAuthenticated(status: boolean): void {
+    this.isAuthenticated = status;
+    this.saveUserToLocalStorage();
+  }
+
+  /**
+   * Get current user
+   */
+  getUser(): User | null {
+    return this.currentUser;
+  }
+
+  /**
+   * Check if user is authenticated
+   */
+  isUserAuthenticated(): boolean {
+    return this.isAuthenticated;
   }
 }
 
-// Create and export a singleton instance
 const authService = new AuthService();
 export default authService;

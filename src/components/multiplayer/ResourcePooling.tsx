@@ -34,7 +34,11 @@ interface ResourcePoolData {
   }[];
 }
 
-const ResourcePooling: React.FC = () => {
+interface ResourcePoolingProps {
+  onContributeResources?: (resources: Record<string, number>) => void;
+}
+
+const ResourcePooling: React.FC<ResourcePoolingProps> = ({ onContributeResources }) => {
   const { currentPlayer } = useGame();
   const [contributionAmounts, setContributionAmounts] = useState({
     credits: 0,
@@ -138,8 +142,14 @@ const ResourcePooling: React.FC = () => {
   const handleContribute = () => {
     if (!currentPlayer) return;
     
-    // In a real implementation, this would send a request to a backend service
-    // resourceService.contributeToPool(resourcePool.id, currentPlayer.id, contributionAmounts);
+    // Call the external handler if provided
+    if (onContributeResources) {
+      onContributeResources(contributionAmounts);
+    } else {
+      // In a real implementation, this would send a request to a backend service
+      // resourceService.contributeToPool(resourcePool.id, currentPlayer.id, contributionAmounts);
+      console.log('Contributing resources:', contributionAmounts);
+    }
     
     // Reset contribution amounts
     setContributionAmounts({

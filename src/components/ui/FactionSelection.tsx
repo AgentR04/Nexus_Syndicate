@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import gameDataService, { FirestoreFaction } from '../../services/gameDataService';
 
 export interface Faction {
   id: string;
@@ -9,41 +10,6 @@ export interface Faction {
   secondaryColor: string;
 }
 
-const factions: Faction[] = [
-  {
-    id: 'netrunners',
-    name: 'NetRunners',
-    description: 'Elite hackers who specialize in digital infiltration and market manipulation.',
-    image: '/netrunners.png',
-    primaryColor: 'neon-blue',
-    secondaryColor: 'dark-blue'
-  },
-  {
-    id: 'synth-lords',
-    name: 'Synth Lords',
-    description: 'Augmentation specialists who excel at resource extraction and territory control.',
-    image: '/synthlords.png',
-    primaryColor: 'neon-purple',
-    secondaryColor: 'dark-purple'
-  },
-  {
-    id: 'chrome-jackals',
-    name: 'Chrome Jackals',
-    description: 'Mercenary traders who dominate through economic warfare and strategic alliances.',
-    image: '/chromejackals.png',
-    primaryColor: 'neon-pink',
-    secondaryColor: 'dark-gray'
-  },
-  {
-    id: 'quantum-collective',
-    name: 'Quantum Collective',
-    description: 'Technological visionaries who leverage advanced AI and predictive algorithms.',
-    image: '/quantumcollective.png',
-    primaryColor: 'neon-yellow',
-    secondaryColor: 'dark-gray'
-  }
-];
-
 interface FactionSelectionProps {
   onSelect: (faction: Faction) => void;
   selectedFactionId?: string;
@@ -51,6 +17,78 @@ interface FactionSelectionProps {
 
 const FactionSelection: React.FC<FactionSelectionProps> = ({ onSelect, selectedFactionId }) => {
   const [hoveredFaction, setHoveredFaction] = useState<string | null>(null);
+  const [factions, setFactions] = useState<Faction[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Map Firestore factions to UI factions with color information
+  const mapFirestoreFaction = (firestoreFaction: FirestoreFaction): Faction => {
+    // Map faction names to colors
+    const colorMap: Record<string, { primary: string, secondary: string }> = {
+      'Neon Dragons': { primary: 'neon-blue', secondary: 'dark-blue' },
+      'Chrome Collective': { primary: 'neon-purple', secondary: 'dark-purple' },
+      'Quantum Cartel': { primary: 'neon-pink', secondary: 'dark-gray' },
+      'Ghost Protocol': { primary: 'neon-yellow', secondary: 'dark-gray' }
+    };
+
+    const colors = colorMap[firestoreFaction.name] || { primary: 'neon-blue', secondary: 'dark-blue' };
+
+    return {
+      id: firestoreFaction.id,
+      name: firestoreFaction.name,
+      description: firestoreFaction.description,
+      image: firestoreFaction.imageUrl || `/images/factions/${firestoreFaction.id}.jpg`,
+      primaryColor: colors.primary,
+      secondaryColor: colors.secondary
+    };
+  };
+
+  useEffect(() => {
+    const fetchFactions = async () => {
+      try {
+        setLoading(true);
+        const firestoreFactions = await gameDataService.getAllFactions();
+        const mappedFactions = firestoreFactions.map(mapFirestoreFaction);
+        setFactions(mappedFactions);
+        setError(null);
+      } catch (err) {
+        console.error('Error fetching factions:', err);
+        setError('Failed to load factions. Please try again later.');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchFactions();
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="w-full">
+        <h3 className="text-xl font-cyber mb-4 text-neon-blue">Select Your Syndicate</h3>
+        <div className="cyber-panel p-6 text-center">
+          <p className="text-neon-blue animate-pulse">Loading syndicates...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="w-full">
+        <h3 className="text-xl font-cyber mb-4 text-neon-blue">Select Your Syndicate</h3>
+        <div className="cyber-panel p-6 text-center border-neon-pink">
+          <p className="text-neon-pink">{error}</p>
+          <button 
+            className="cyber-button-small mt-4"
+            onClick={() => window.location.reload()}
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="w-full">

@@ -105,7 +105,7 @@ const SyndicateManagement: React.FC = () => {
   const playerAgents = agents.filter((a) => a.location !== "undeployed");
 
   return (
-    <div className="h-full overflow-hidden flex flex-col cyber-panel p-2">
+    <div className="h-full overflow-y-auto flex flex-col p-2">
       {/* Tabs */}
       <div className="flex border-b border-neon-blue mb-3">
         <button
