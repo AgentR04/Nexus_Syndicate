@@ -4,12 +4,9 @@ import CooperativeMissions from "../components/multiplayer/CooperativeMissions";
 import ResourcePooling from "../components/multiplayer/ResourcePooling";
 import SyndicateLeaderboards from "../components/multiplayer/SyndicateLeaderboards";
 // import MultiplayerChat from "../components/multiplayer/MultiplayerChat";
-import multiplayerService, { 
-  Session, 
-  InviteData, 
-  MessageData,
-  Mission
-} from "../services/multiplayerService";
+import multiplayerService from "../services/multiplayerService";
+import { Session, InviteData, MessageData } from "../types/multiplayerTypes";
+import { Mission } from "../types/gameTypes";
 import { useGame } from "../context/GameContext";
 
 interface Friend {
@@ -152,12 +149,12 @@ const Multiplayer: React.FC = () => {
           // Update the active session to reflect the player leaving
           const updatedSession = { ...activeSession };
           updatedSession.currentPlayers = updatedSession.currentPlayers.filter(
-            (player) => player.id !== data.playerId
+            (player: { id: string }) => player.id !== data.playerId
           );
           setActiveSession(updatedSession);
 
           const playerName =
-            activeSession.currentPlayers.find((p) => p.id === data.playerId)
+            activeSession.currentPlayers.find((p: { id: string; username?: string }) => p.id === data.playerId)
               ?.username || "A player";
           addGameNotification("info", `${playerName} left the session`);
         }
@@ -714,7 +711,7 @@ const Multiplayer: React.FC = () => {
             <div className="session-players">
               <h3>Players</h3>
               <ul className="players-list">
-                {activeSession.currentPlayers.map((player) => (
+                {activeSession.currentPlayers.map((player: { id: string; username: string; faction: string; role?: string }) => (
                   <li key={player.id} className="player-item">
                     <span className="player-name">{player.username}</span>
                     <span

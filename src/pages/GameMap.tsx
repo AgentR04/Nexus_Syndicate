@@ -3,8 +3,9 @@ import { useNavigate } from "react-router-dom";
 import Navbar from "../components/common/Navbar";
 import TerritoryControl from "../components/TerritoryControl";
 import { useGame } from "../context/GameContext";
+import firestoreService from "../services/firestoreService";
 import gameService from "../services/gameService";
-import { BattleResult } from "../types/gameTypes";
+import { BattleResult, GameEvent } from "../types/gameTypes";
 
 // Hex grid utility functions
 const hexToPixel = (q: number, r: number, size: number) => {
@@ -48,6 +49,13 @@ const GameMap: React.FC = () => {
     y: 220,
   });
   const [activeOverlay, setActiveOverlay] = useState<string>("ownership");
+
+  // Make all territories neutral by default when component loads
+  useEffect(() => {
+    if (territories.length > 0) {
+      makeAllTerritoriesNeutral();
+    }
+  }, [territories.length]); // Only run when territories are first loaded
 
   // Center map on initial load
   useEffect(() => {
@@ -170,6 +178,57 @@ const GameMap: React.FC = () => {
   const handleRecallAgent = (agentId: number) => {
     const updatedAgents = gameService.recallAgent(agentId, agents);
     setAgents(updatedAgents);
+  };
+
+  // Make all territories neutral
+  const makeAllTerritoriesNeutral = async () => {
+    const neutralTerritories = territories.map((territory) => ({
+      ...territory,
+      owner: "neutral",
+      controlPoints: 0,
+      status: "neutral",
+    }));
+
+    // Update each territory in Firebase
+    const updatePromises = neutralTerritories.map((territory) =>
+      firestoreService.updateTerritory(territory.id, {
+        owner: "neutral",
+        status: "neutral",
+        controlPoints: 0,
+        lastCaptureTime: Date.now(),
+      })
+    );
+
+    try {
+      await Promise.all(updatePromises);
+      console.log("All territories updated to neutral in Firebase");
+    } catch (error) {
+      console.error("Error updating territories in Firebase:", error);
+    }
+
+    setTerritories(neutralTerritories);
+
+    // If a territory is selected, update it to be neutral as well
+    if (selectedTerritory) {
+      setSelectedTerritory({
+        ...selectedTerritory,
+        owner: "neutral",
+        controlPoints: 0,
+        status: "neutral",
+      });
+    }
+
+    // Add a game event for this action
+    const newEvent: GameEvent = {
+      id: `event-${Date.now()}`,
+      type: "territory_claim",
+      sourcePlayerId: currentPlayer?.id || "system",
+      message: "All territories have been reset to neutral status",
+      timestamp: Date.now(),
+      status: "completed",
+    };
+
+    setGameEvents([newEvent, ...gameEvents]);
   };
 
   // Subscribe to game events
@@ -710,7 +769,7 @@ const GameMap: React.FC = () => {
                 strokeLinecap="round"
                 strokeLinejoin="round"
                 strokeWidth={2}
-                d="M12 9v3m0 0v3m0-3h3m-3 0H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z"
+                d="M12 9v3m0 0v3m0-3h3m-3 0H9m12 0a9 9 0 0118 0 9 9 0 0118 0z"
               />
             </svg>
           </button>

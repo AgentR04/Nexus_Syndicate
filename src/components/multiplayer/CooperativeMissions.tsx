@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Box, Typography, Grid, Paper, Button, LinearProgress, Chip, Avatar, Tooltip } from '@mui/material';
 import { styled } from '@mui/material/styles';
-import { Mission } from '../../services/multiplayerService';
 import multiplayerService from '../../services/multiplayerService';
+import { Mission } from '../../types/gameTypes';
 
 // Styled components
 const MissionCard = styled(Paper)(({ theme }) => ({
@@ -187,26 +187,38 @@ const CooperativeMissions: React.FC<CooperativeMissionsProps> = ({ sessionId, is
           </Typography>
           
           <Grid container spacing={2}>
+            {activeMission.reward.experience && (
+              <Grid item>
+                <Chip 
+                  label={`${activeMission.reward.experience} XP`} 
+                  sx={{ backgroundColor: 'rgba(33, 150, 243, 0.2)', color: '#2196f3' }}
+                />
+              </Grid>
+            )}
             <Grid item>
               <Chip 
-                label={`${activeMission.rewards.experience} XP`} 
-                sx={{ backgroundColor: 'rgba(33, 150, 243, 0.2)', color: '#2196f3' }}
-              />
-            </Grid>
-            <Grid item>
-              <Chip 
-                label={`${activeMission.rewards.credits} Credits`} 
+                label={`${activeMission.reward.credits} Credits`} 
                 sx={{ backgroundColor: 'rgba(255, 193, 7, 0.2)', color: '#ffc107' }}
               />
             </Grid>
-            {Object.entries(activeMission.rewards.resources).map(([key, value]) => (
-              <Grid item key={key}>
-                <Chip 
-                  label={`${value} ${key.replace(/([A-Z])/g, ' $1').trim()}`} 
-                  sx={{ backgroundColor: 'rgba(76, 175, 80, 0.2)', color: '#4caf50' }}
-                />
-              </Grid>
-            ))}
+            <Grid item>
+              <Chip 
+                label={`${activeMission.reward.dataShards} Data Shards`} 
+                sx={{ backgroundColor: 'rgba(76, 175, 80, 0.2)', color: '#4caf50' }}
+              />
+            </Grid>
+            <Grid item>
+              <Chip 
+                label={`${activeMission.reward.syntheticAlloys} Synthetic Alloys`} 
+                sx={{ backgroundColor: 'rgba(76, 175, 80, 0.2)', color: '#4caf50' }}
+              />
+            </Grid>
+            <Grid item>
+              <Chip 
+                label={`${activeMission.reward.quantumCores} Quantum Cores`} 
+                sx={{ backgroundColor: 'rgba(76, 175, 80, 0.2)', color: '#4caf50' }}
+              />
+            </Grid>
           </Grid>
         </Paper>
         
@@ -242,18 +254,12 @@ const CooperativeMissions: React.FC<CooperativeMissionsProps> = ({ sessionId, is
       name: 'Arasaka Data Heist',
       description: 'Infiltrate Arasaka Corp servers and extract classified project data.',
       difficulty: 'medium',
-      rewards: {
-        experience: 500,
+      reward: {
         credits: 1500,
-        resources: {
-          dataShards: 75,
-          syntheticAlloys: 30,
-          quantumCores: 10
-        }
-      },
-      requirements: {
-        minPlayers: 3,
-        recommendedPlayers: 4
+        dataShards: 75,
+        syntheticAlloys: 30,
+        quantumCores: 10,
+        experience: 500
       },
       objectives: [
         {
@@ -275,18 +281,12 @@ const CooperativeMissions: React.FC<CooperativeMissionsProps> = ({ sessionId, is
       name: 'Quantum Vault Heist',
       description: 'Break into a secure quantum vault in Night City\'s financial district.',
       difficulty: 'hard',
-      rewards: {
-        experience: 800,
+      reward: {
         credits: 2500,
-        resources: {
-          dataShards: 120,
-          syntheticAlloys: 60,
-          quantumCores: 25
-        }
-      },
-      requirements: {
-        minPlayers: 4,
-        recommendedPlayers: 6
+        dataShards: 120,
+        syntheticAlloys: 60,
+        quantumCores: 25,
+        experience: 800
       },
       objectives: [
         {
@@ -308,18 +308,12 @@ const CooperativeMissions: React.FC<CooperativeMissionsProps> = ({ sessionId, is
       name: 'Syndicate Alliance',
       description: 'Form a temporary alliance with a rival syndicate to take down a common enemy.',
       difficulty: 'easy',
-      rewards: {
-        experience: 300,
+      reward: {
         credits: 1000,
-        resources: {
-          dataShards: 50,
-          syntheticAlloys: 25,
-          quantumCores: 5
-        }
-      },
-      requirements: {
-        minPlayers: 2,
-        recommendedPlayers: 3
+        dataShards: 50,
+        syntheticAlloys: 25,
+        quantumCores: 5,
+        experience: 300
       },
       objectives: [
         {

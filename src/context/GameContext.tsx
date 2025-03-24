@@ -5,6 +5,7 @@ import { updateExtractedResources } from '../utils/resourceUtils';
 import authService from '../services/authService';
 import firestoreService from '../services/firestoreService';
 import { RESOURCE_UPDATE_EVENT } from '../utils/resourceUtils';
+import multiplayerService from '../services/multiplayerService';
 
 // Initial mock data
 import { mockTerritories, mockAgents } from '../data/mockData';
@@ -75,6 +76,8 @@ export const GameProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [gameEvents, setGameEvents] = useState<GameEvent[]>([]);
   const [selectedTerritory, setSelectedTerritory] = useState<Territory | null>(null);
   const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null);
+  const [isMultiplayerConnected, setIsMultiplayerConnected] = useState<boolean>(false);
+  const [activeSession, setActiveSession] = useState<any>(null);
 
   // Fetch user data from Firebase and update currentPlayer
   useEffect(() => {
@@ -115,6 +118,11 @@ export const GameProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
               }
               return updatedPlayers;
             });
+
+            // Connect to multiplayer service with user data
+            if (user && !isMultiplayerConnected) {
+              connectToMultiplayerService(user);
+            }
           }
         }
       } catch (error) {
@@ -123,7 +131,79 @@ export const GameProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     };
     
     fetchUserData();
-  }, []);
+  }, [isMultiplayerConnected]);
+
+  // Connect to multiplayer service
+  const connectToMultiplayerService = async (user: any) => {
+    try {
+      console.log('Connecting to multiplayer service...');
+      const connected = await multiplayerService.connect({
+        id: user.id,
+        username: user.username || 'Anonymous',
+        walletAddress: user.walletAddress || ''
+      });
+
+      if (connected) {
+        console.log('Connected to multiplayer service successfully');
+        setIsMultiplayerConnected(true);
+        setupMultiplayerEventListeners();
+      } else {
+        console.error('Failed to connect to multiplayer service');
+      }
+    } catch (error) {
+      console.error('Error connecting to multiplayer service:', error);
+    }
+  };
+
+  // Setup multiplayer event listeners
+  const setupMultiplayerEventListeners = () => {
+    // Listen for game state updates
+    multiplayerService.on('game_state_updated', (gameState: any) => {
+      console.log('Game state updated from multiplayer:', gameState);
+      if (gameState.territories) setTerritories(gameState.territories);
+      if (gameState.agents) setAgents(gameState.agents);
+      if (gameState.players) {
+        setPlayers(gameState.players);
+        // Update current player if it's in the updated list
+        const updatedCurrentPlayer = gameState.players.find((p: Player) => p.id === currentPlayer?.id);
+        if (updatedCurrentPlayer) {
+          setCurrentPlayer(updatedCurrentPlayer);
+        }
+      }
+      if (gameState.gameEvents) setGameEvents(gameState.gameEvents);
+    });
+
+    // Listen for session events
+    multiplayerService.on('session_created', (session: any) => {
+      console.log('Session created:', session);
+      setActiveSession(session);
+    });
+
+    multiplayerService.on('session_joined', (session: any) => {
+      console.log('Session joined:', session);
+      setActiveSession(session);
+    });
+
+    multiplayerService.on('session_updated', (session: any) => {
+      console.log('Session updated:', session);
+      setActiveSession(session);
+    });
+
+    multiplayerService.on('player_joined', (data: any) => {
+      console.log('Player joined:', data);
+      // You might want to add a notification here
+    });
+
+    multiplayerService.on('player_left', (data: any) => {
+      console.log('Player left:', data);
+      // You might want to add a notification here
+    });
+
+    multiplayerService.on('error', (error: any) => {
+      console.error('Multiplayer error:', error);
+      // You might want to add an error notification here
+    });
+  };
   
   // Listen for resource update events
   useEffect(() => {
@@ -154,6 +234,13 @@ export const GameProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           }
           return updatedPlayers;
         });
+
+        // Update Firebase with the new resources
+        if (currentPlayer.id) {
+          firestoreService.updateUserResources(currentPlayer.id, resources)
+            .then(() => console.log('Firebase resources updated after resource event'))
+            .catch(error => console.error('Error updating Firebase resources:', error));
+        }
       }
     };
     
@@ -209,52 +296,122 @@ export const GameProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     };
   }, []);
 
+  // Create a new multiplayer session
+  const createMultiplayerSession = (sessionData: any) => {
+    if (!isMultiplayerConnected || !currentPlayer) {
+      console.error('Cannot create session: not connected to multiplayer or no current player');
+      return;
+    }
+
+    multiplayerService.createSession({
+      hostId: currentPlayer.id,
+      hostName: currentPlayer.name,
+      ...sessionData,
+      territories
+    });
+  };
+
+  // Join an existing multiplayer session
+  const joinMultiplayerSession = (sessionCode: string) => {
+    if (!isMultiplayerConnected) {
+      console.error('Cannot join session: not connected to multiplayer');
+      return;
+    }
+
+    multiplayerService.joinSession(sessionCode);
+  };
+
   // Claim territory
   const claimTerritory = (territoryId: number) => {
-    const updatedTerritories = gameService.claimTerritory(territoryId, territories);
-    setTerritories(updatedTerritories);
+    if (activeSession) {
+      // Use multiplayer service if in a session
+      multiplayerService.claimTerritory(territoryId);
+    } else {
+      // Use local game service if not in a multiplayer session
+      const updatedTerritories = gameService.claimTerritory(territoryId, territories);
+      setTerritories(updatedTerritories);
+      
+      // Update territory ownership in Firebase
+      const territory = updatedTerritories.find(t => t.id === territoryId);
+      if (territory && currentPlayer) {
+        firestoreService.updateTerritory(territoryId, {
+          owner: currentPlayer.id,
+          status: 'owned',
+          lastCaptureTime: Date.now()
+        })
+        .then(() => {
+          console.log(`Territory ${territoryId} ownership updated in Firebase`);
+        })
+        .catch(error => {
+          console.error('Error updating territory ownership in Firebase:', error);
+        });
+      }
+    }
   };
 
   // Attack territory
   const attackTerritory = (territoryId: number) => {
-    const updatedTerritories = gameService.attackTerritory(territoryId, territories);
-    setTerritories(updatedTerritories);
+    if (activeSession) {
+      // Implement multiplayer attack logic here
+      console.log('Multiplayer attack not implemented yet');
+    } else {
+      const updatedTerritories = gameService.attackTerritory(territoryId, territories);
+      setTerritories(updatedTerritories);
+    }
   };
 
   // Deploy agent
   const deployAgent = (agentType: string, territoryId: number, task: string) => {
-    const updatedAgents = gameService.deployAgent(agentType, territoryId, task, agents, territories);
-    setAgents(updatedAgents);
+    if (activeSession) {
+      // Use multiplayer service if in a session
+      multiplayerService.deployAgent(agentType, territoryId, task);
+    } else {
+      // Use local game service if not in a multiplayer session
+      const updatedAgents = gameService.deployAgent(agentType, territoryId, task, agents, territories);
+      setAgents(updatedAgents);
+    }
   };
 
   // Extract resources
   const extractResources = (territoryId: number) => {
     // Get resource gains before calling gameService
     const territory = territories.find(t => t.id === territoryId);
-    if (!territory || territory.owner !== 'player') return;
+    if (!territory) return;
     
-    // Calculate resource gains (similar to what gameService does)
+    // Only allow extraction if the player owns the territory or if it's unclaimed
+    if (territory.owner && territory.owner !== currentPlayer?.id && territory.owner !== 'unclaimed') {
+      console.log('Cannot extract: territory owned by another player');
+      return;
+    }
+    
+    // Calculate resource gains
     const resourceGains: Record<string, number> = {};
     territory.resources.forEach(resource => {
-      resourceGains[resource] = Math.floor(Math.random() * 10) + 5; // Random resource gain
+      const resourceType = resource.toLowerCase();
+      resourceGains[resourceType] = Math.floor(Math.random() * 10) + 5; // Random resource gain
     });
     
-    // Call game service to update game state
-    gameService.extractResources(territoryId, territories);
-    
-    // Update Firebase with the same resource gains
-    console.log('Updating Firebase with extracted resources:', resourceGains);
-    updateExtractedResources(resourceGains)
-      .then(success => {
-        if (success) {
-          console.log('Firebase resources updated successfully after extraction');
-        } else {
-          console.error('Failed to update Firebase resources after extraction');
-        }
-      })
-      .catch(error => {
-        console.error('Error updating Firebase resources after extraction:', error);
-      });
+    if (activeSession) {
+      // Use multiplayer service if in a session
+      multiplayerService.extractResources(territoryId, resourceGains);
+    } else {
+      // Use local game service and update Firebase
+      gameService.extractResources(territoryId, territories);
+      
+      // Update Firebase with the same resource gains
+      console.log('Updating Firebase with extracted resources:', resourceGains);
+      updateExtractedResources(resourceGains)
+        .then(success => {
+          if (success) {
+            console.log('Firebase resources updated successfully after extraction');
+          } else {
+            console.error('Failed to update Firebase resources after extraction');
+          }
+        })
+        .catch(error => {
+          console.error('Error updating Firebase resources after extraction:', error);
+        });
+    }
   };
 
   // Create trade offer

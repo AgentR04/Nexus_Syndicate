@@ -21,6 +21,8 @@ app.use(express.json());
 // Store active sessions and users
 const sessions = new Map();
 const users = new Map();
+const gameStates = new Map(); // Store game states for different sessions
+const userTerritories = new Map(); // Track which territories are owned by which users
 
 // Helper function to broadcast session updates to all players in a session
 const broadcastSessionUpdate = (sessionId) => {
@@ -46,6 +48,15 @@ const broadcastSessionsList = () => {
   
   io.emit('sessions_list', publicSessions);
   console.log(`Sessions list broadcast to all connected users`);
+};
+
+// Helper function to broadcast game state updates to all players in a session
+const broadcastGameStateUpdate = (sessionId) => {
+  const gameState = gameStates.get(sessionId);
+  if (gameState) {
+    io.to(sessionId).emit('game_state_updated', gameState);
+    console.log(`Game state update broadcast to all players in session: ${sessionId}`);
+  }
 };
 
 // Routes
@@ -79,6 +90,13 @@ io.on("connection", (socket) => {
 
     // Send list of active sessions to the user
     socket.emit("sessions_list", Array.from(sessions.values()));
+    
+    // Broadcast user presence to all connected users
+    io.emit("user_online", {
+      id: userId,
+      username: userData.username || "Anonymous",
+      faction: userData.faction || "Netrunners"
+    });
   });
 
   // Create a new session
@@ -99,406 +117,29 @@ io.on("connection", (socket) => {
       resourcePool: {
         resources: {},
         contributors: []
-      },
-      messages: []
+      }
     };
 
-    // Store the session
-    sessions.set(sessionId, newSession);
-
-    // Join the session room
-    socket.join(sessionId);
-
-    console.log(`Session created: ${sessionCode} by ${sessionData.hostName}`);
-
-    // Notify the creator
-    socket.emit("session_created", newSession);
-
-    // Broadcast to all users that a new session is available
-    if (newSession.privacy === "public") {
-      broadcastSessionsList();
-    }
-  });
-
-  // Join an existing session
-  socket.on("join_session", (data) => {
-    const { sessionCode, player } = data;
-
-    // Find session by code
-    const sessionEntry = Array.from(sessions.entries()).find(
-      ([_, session]) => session.code === sessionCode
-    );
-
-    if (!sessionEntry) {
-      socket.emit("error", {
-        message: `Session with code ${sessionCode} not found`,
-      });
-      return;
-    }
-
-    const [sessionId, session] = sessionEntry;
-
-    // Check if session is full
-    if (session.currentPlayers.length >= session.maxPlayers) {
-      socket.emit("error", { message: "Session is full" });
-      return;
-    }
-
-    // Check if player is already in the session
-    const existingPlayerIndex = session.currentPlayers.findIndex(
-      (p) => p.id === player?.id
-    );
-    if (existingPlayerIndex === -1 && player) {
-      // Add player to session
-      session.currentPlayers.push({
-        ...player,
-        role: "Member",
-      });
-    }
-
-    // Join the session room
-    socket.join(sessionId);
-
-    console.log(`Player joined session: ${sessionCode}`);
-
-    // Update the session
-    sessions.set(sessionId, session);
-
-    // Notify the player
-    socket.emit("session_joined", session);
-
-    // Notify other players in the session
-    socket.to(sessionId).emit("player_joined", {
-      sessionId,
-      player: player || {
-        id: socket.id,
-        username: "Anonymous Player",
-        faction: "Netrunners",
-        role: "Member",
-      },
+    // Initialize game state for this session
+    gameStates.set(sessionId, {
+      territories: sessionData.territories || [],
+      players: [],
+      agents: [],
+      gameEvents: []
     });
 
-    // Broadcast updated session information to all players in the session
-    broadcastSessionUpdate(sessionId);
-
-    // Broadcast updated session list
+    sessions.set(sessionId, newSession);
+    socket.join(sessionId);
+    
+    console.log(`Session created: ${sessionCode} by ${sessionData.hostName}`);
+    
+    socket.emit("session_created", newSession);
     broadcastSessionsList();
   });
 
-  // Leave a session
-  socket.on("leave_session", (data) => {
-    const { sessionId, playerId } = data;
-    const session = sessions.get(sessionId);
-
-    if (!session) {
-      return;
-    }
-
-    // Remove player from session
-    session.currentPlayers = session.currentPlayers.filter(
-      (p) => p.id !== playerId
-    );
-
-    // Leave the session room
-    socket.leave(sessionId);
-
-    console.log(`Player left session: ${session.code}`);
-
-    // If session is empty, remove it
-    if (session.currentPlayers.length === 0) {
-      sessions.delete(sessionId);
-      io.emit("session_closed", { sessionId });
-      console.log(`Session closed: ${session.code}`);
-      
-      // Broadcast updated session list
-      broadcastSessionsList();
-    } else {
-      // If host left, assign a new host
-      if (playerId === session.hostId && session.currentPlayers.length > 0) {
-        const newHost = session.currentPlayers[0];
-        session.hostId = newHost.id;
-        session.hostName = newHost.username;
-        newHost.role = "Host";
-
-        // Notify all players in the session about host change
-        io.to(sessionId).emit("host_changed", {
-          sessionId,
-          hostId: newHost.id,
-          hostName: newHost.username,
-        });
-      }
-
-      // Update the session
-      sessions.set(sessionId, session);
-
-      // Notify all players in the session
-      io.to(sessionId).emit("player_left", {
-        sessionId,
-        playerId,
-      });
-
-      // Notify the player who left
-      socket.emit("session_left", {
-        sessionId,
-        playerId,
-      });
-      
-      // Broadcast updated session list and session update
-      broadcastSessionsList();
-      broadcastSessionUpdate(sessionId);
-    }
-  });
-
-  // Send a chat message
-  socket.on("send_message", (messageData) => {
-    const { sessionId, message } = messageData;
-    const session = sessions.get(sessionId);
-
-    if (!session) {
-      return;
-    }
-
-    // Add message ID and timestamp
-    const newMessage = {
-      ...message,
-      id: uuidv4(),
-      timestamp: Date.now(),
-    };
-
-    // Store message in session
-    if (!session.messages) {
-      session.messages = [];
-    }
-    session.messages.push(newMessage);
-    
-    // Limit message history to last 100 messages
-    if (session.messages.length > 100) {
-      session.messages = session.messages.slice(-100);
-    }
-
-    // Update the session
-    sessions.set(sessionId, session);
-
-    // Broadcast message to all players in the session
-    io.to(sessionId).emit("message_received", newMessage);
-  });
-
-  // Start a mission
-  socket.on("start_mission", (data) => {
-    const { sessionId, missionId } = data;
-    const session = sessions.get(sessionId);
-
-    if (!session) {
-      return;
-    }
-
-    // Create a mock mission for now
-    const mission = {
-      id: missionId,
-      name: "Mission " + missionId,
-      description: "A cooperative mission for the syndicate",
-      difficulty: "medium",
-      rewards: {
-        experience: 500,
-        credits: 1500,
-        resources: {
-          dataShards: 75,
-          syntheticAlloys: 30,
-          quantumCores: 10,
-        },
-      },
-      requirements: {
-        minPlayers: 2,
-        recommendedPlayers: 4,
-      },
-      objectives: [
-        {
-          id: "obj1",
-          description: "Infiltrate the target location",
-          completed: false,
-        },
-        {
-          id: "obj2",
-          description: "Hack the mainframe",
-          completed: false,
-        },
-        {
-          id: "obj3",
-          description: "Extract the data",
-          completed: false,
-        },
-      ],
-      status: "in_progress",
-      progress: 0,
-      startedAt: Date.now(),
-    };
-
-    // Add mission to session
-    session.currentMission = mission;
-
-    // Update the session
-    sessions.set(sessionId, session);
-
-    // Broadcast mission started to all players in the session
-    io.to(sessionId).emit("mission_started", mission);
-    
-    // Broadcast session update
-    broadcastSessionUpdate(sessionId);
-
-    // Simulate mission progress (for demo purposes)
-    let progress = 0;
-    const progressInterval = setInterval(() => {
-      progress += 10;
-      
-      if (progress <= 100) {
-        // Update mission progress
-        session.currentMission.progress = progress;
-        
-        // Update objective completion
-        if (progress >= 30 && !session.currentMission.objectives[0].completed) {
-          session.currentMission.objectives[0].completed = true;
-        }
-        if (progress >= 60 && !session.currentMission.objectives[1].completed) {
-          session.currentMission.objectives[1].completed = true;
-        }
-        if (progress >= 90 && !session.currentMission.objectives[2].completed) {
-          session.currentMission.objectives[2].completed = true;
-        }
-        
-        // Update the session
-        sessions.set(sessionId, session);
-        
-        // Broadcast progress update
-        io.to(sessionId).emit("mission_progress", {
-          missionId,
-          progress,
-          objectives: session.currentMission.objectives
-        });
-        
-        // Broadcast session update
-        broadcastSessionUpdate(sessionId);
-        
-        if (progress === 100) {
-          clearInterval(progressInterval);
-          
-          // Complete the mission
-          session.currentMission.status = "completed";
-          session.currentMission.completedAt = Date.now();
-          
-          // Update the session
-          sessions.set(sessionId, session);
-          
-          // Broadcast mission completed
-          io.to(sessionId).emit("mission_completed", {
-            missionId,
-            rewards: session.currentMission.rewards
-          });
-          
-          // Broadcast session update
-          broadcastSessionUpdate(sessionId);
-        }
-      } else {
-        clearInterval(progressInterval);
-      }
-    }, 5000); // Update every 5 seconds
-  });
-
-  // Update mission progress
-  socket.on("update_mission_progress", (data) => {
-    const { sessionId, missionId, progress, objectiveId } = data;
-    const session = sessions.get(sessionId);
-
-    if (!session || !session.currentMission || session.currentMission.id !== missionId) {
-      return;
-    }
-
-    // Update mission progress
-    session.currentMission.progress = progress;
-
-    // Update objective if provided
-    if (objectiveId) {
-      const objective = session.currentMission.objectives.find(obj => obj.id === objectiveId);
-      if (objective) {
-        objective.completed = true;
-      }
-    }
-
-    // Update the session
-    sessions.set(sessionId, session);
-
-    // Broadcast progress update
-    io.to(sessionId).emit("mission_progress", {
-      missionId,
-      progress,
-      objectives: session.currentMission.objectives
-    });
-    
-    // Broadcast session update
-    broadcastSessionUpdate(sessionId);
-  });
-
-  // Contribute resources
-  socket.on("contribute_resources", (data) => {
-    const { sessionId, playerId, playerName, faction, resources } = data;
-    const session = sessions.get(sessionId);
-
-    if (!session) {
-      return;
-    }
-
-    // Initialize resource pool if not exists
-    if (!session.resourcePool) {
-      session.resourcePool = {
-        resources: {},
-        contributors: []
-      };
-    }
-
-    // Update resource pool
-    Object.entries(resources).forEach(([resourceType, amount]) => {
-      if (!session.resourcePool.resources[resourceType]) {
-        session.resourcePool.resources[resourceType] = 0;
-      }
-      session.resourcePool.resources[resourceType] += amount;
-    });
-
-    // Update contributor
-    const contributorIndex = session.resourcePool.contributors.findIndex(c => c.id === playerId);
-    if (contributorIndex === -1) {
-      // Add new contributor
-      session.resourcePool.contributors.push({
-        id: playerId,
-        username: playerName,
-        faction,
-        contributions: { ...resources }
-      });
-    } else {
-      // Update existing contributor
-      const contributor = session.resourcePool.contributors[contributorIndex];
-      Object.entries(resources).forEach(([resourceType, amount]) => {
-        if (!contributor.contributions[resourceType]) {
-          contributor.contributions[resourceType] = 0;
-        }
-        contributor.contributions[resourceType] += amount;
-      });
-    }
-
-    // Update the session
-    sessions.set(sessionId, session);
-
-    // Broadcast resource pool update
-    io.to(sessionId).emit("resource_pool_updated", {
-      sessionId,
-      resourcePool: session.resourcePool
-    });
-    
-    // Broadcast session update
-    broadcastSessionUpdate(sessionId);
-  });
-
-  // Request session data sync
-  socket.on("request_session_sync", (data) => {
-    const { sessionId } = data;
+  // Handle game state synchronization
+  socket.on("update_game_state", (data) => {
+    const { sessionId, gameState } = data;
     const session = sessions.get(sessionId);
 
     if (!session) {
@@ -506,90 +147,218 @@ io.on("connection", (socket) => {
       return;
     }
 
-    // Send the latest session data to the requesting client
-    socket.emit("session_sync", session);
+    // Update the game state for this session
+    gameStates.set(sessionId, gameState);
+    
+    // Broadcast the updated game state to all players in the session
+    broadcastGameStateUpdate(sessionId);
   });
 
+  // Handle territory claiming
+  socket.on("claim_territory", (data) => {
+    const { sessionId, playerId, territoryId } = data;
+    const session = sessions.get(sessionId);
+    const gameState = gameStates.get(sessionId);
+
+    if (!session || !gameState) {
+      socket.emit("error", { message: "Session or game state not found" });
+      return;
+    }
+
+    // Find the territory in the game state
+    const territoryIndex = gameState.territories.findIndex(t => t.id === territoryId);
+    if (territoryIndex === -1) {
+      socket.emit("error", { message: "Territory not found" });
+      return;
+    }
+
+    // Update the territory owner
+    gameState.territories[territoryIndex].ownerId = playerId;
+    gameState.territories[territoryIndex].lastClaimedAt = Date.now();
+
+    // Track territory ownership
+    if (!userTerritories.has(playerId)) {
+      userTerritories.set(playerId, []);
+    }
+    userTerritories.get(playerId).push(territoryId);
+
+    // Update the game state
+    gameStates.set(sessionId, gameState);
+
+    // Broadcast the updated game state
+    broadcastGameStateUpdate(sessionId);
+
+    console.log(`Territory ${territoryId} claimed by player ${playerId} in session ${sessionId}`);
+  });
+
+  // Handle resource extraction
+  socket.on("extract_resources", (data) => {
+    const { sessionId, playerId, territoryId, resources } = data;
+    const session = sessions.get(sessionId);
+    const gameState = gameStates.get(sessionId);
+
+    if (!session || !gameState) {
+      socket.emit("error", { message: "Session or game state not found" });
+      return;
+    }
+
+    // Find the player in the game state
+    const playerIndex = gameState.players.findIndex(p => p.id === playerId);
+    if (playerIndex === -1) {
+      socket.emit("error", { message: "Player not found" });
+      return;
+    }
+
+    // Update the player's resources
+    const player = gameState.players[playerIndex];
+    Object.keys(resources).forEach(resourceType => {
+      player.resources[resourceType] = (player.resources[resourceType] || 0) + resources[resourceType];
+    });
+
+    // Update the game state
+    gameState.players[playerIndex] = player;
+    gameStates.set(sessionId, gameState);
+
+    // Add a game event
+    gameState.gameEvents.push({
+      id: uuidv4(),
+      type: "resource_extraction",
+      playerId: playerId,
+      territoryId: territoryId,
+      resources: resources,
+      timestamp: Date.now()
+    });
+
+    // Broadcast the updated game state
+    broadcastGameStateUpdate(sessionId);
+
+    console.log(`Resources extracted by player ${playerId} from territory ${territoryId} in session ${sessionId}`);
+  });
+
+  // Handle agent deployment
+  socket.on("deploy_agent", (data) => {
+    const { sessionId, playerId, agentType, territoryId, task } = data;
+    const session = sessions.get(sessionId);
+    const gameState = gameStates.get(sessionId);
+
+    if (!session || !gameState) {
+      socket.emit("error", { message: "Session or game state not found" });
+      return;
+    }
+
+    // Create a new agent
+    const newAgent = {
+      id: uuidv4(),
+      type: agentType,
+      ownerId: playerId,
+      territoryId: territoryId,
+      task: task,
+      status: "active",
+      deployedAt: Date.now()
+    };
+
+    // Add the agent to the game state
+    gameState.agents.push(newAgent);
+    gameStates.set(sessionId, gameState);
+
+    // Add a game event
+    gameState.gameEvents.push({
+      id: uuidv4(),
+      type: "agent_deployed",
+      playerId: playerId,
+      agentId: newAgent.id,
+      territoryId: territoryId,
+      timestamp: Date.now()
+    });
+
+    // Broadcast the updated game state
+    broadcastGameStateUpdate(sessionId);
+
+    console.log(`Agent deployed by player ${playerId} to territory ${territoryId} in session ${sessionId}`);
+  });
+
+  // Handle player disconnection
   socket.on("disconnect", () => {
-    console.log(`User disconnected: ${socket.id}`);
-
-    // Find user by socket ID
-    const userEntry = Array.from(users.entries()).find(
-      ([_, user]) => user.socketId === socket.id
-    );
-
-    if (userEntry) {
-      const [userId, user] = userEntry;
-
-      // Update user status
-      user.isOnline = false;
-      user.lastActive = new Date().toISOString();
-      users.set(userId, user);
-
-      // Check if user is in any sessions
-      for (const [sessionId, session] of sessions.entries()) {
-        const playerIndex = session.currentPlayers.findIndex(
-          (p) => p.id === userId
-        );
-
-        if (playerIndex !== -1) {
-          // Remove player from session
-          session.currentPlayers.splice(playerIndex, 1);
-
-          // If session is empty, remove it
-          if (session.currentPlayers.length === 0) {
-            sessions.delete(sessionId);
-            io.emit("session_closed", { sessionId });
-            console.log(`Session closed: ${session.code}`);
-          } else {
-            // If host left, assign a new host
-            if (userId === session.hostId) {
-              const newHost = session.currentPlayers[0];
-              session.hostId = newHost.id;
-              session.hostName = newHost.username;
-              newHost.role = "Host";
-
-              // Notify all players in the session about host change
-              io.to(sessionId).emit("host_changed", {
-                sessionId,
-                hostId: newHost.id,
-                hostName: newHost.username,
-              });
-            }
-
-            // Update the session
-            sessions.set(sessionId, session);
-
-            // Notify all players in the session
-            io.to(sessionId).emit("player_left", {
-              sessionId,
-              playerId: userId,
-            });
-          }
-          
-          // Broadcast updated session list and session update
-          broadcastSessionsList();
-          if (sessions.has(sessionId)) {
-            broadcastSessionUpdate(sessionId);
-          }
-        }
+    // Find the user associated with this socket
+    let disconnectedUserId = null;
+    for (const [userId, user] of users.entries()) {
+      if (user.socketId === socket.id) {
+        disconnectedUserId = userId;
+        user.isOnline = false;
+        user.lastActive = new Date().toISOString();
+        break;
       }
     }
+
+    if (disconnectedUserId) {
+      console.log(`User disconnected: ${disconnectedUserId}`);
+      
+      // Broadcast user offline status
+      io.emit("user_offline", { id: disconnectedUserId });
+      
+      // Check all sessions for this user and update them
+      for (const [sessionId, session] of sessions.entries()) {
+        const playerIndex = session.currentPlayers.findIndex(p => p.id === disconnectedUserId);
+        if (playerIndex !== -1) {
+          // Update player status in session
+          session.currentPlayers[playerIndex].isOnline = false;
+          sessions.set(sessionId, session);
+          
+          // Broadcast session update
+          broadcastSessionUpdate(sessionId);
+        }
+      }
+    } else {
+      console.log(`Unknown user disconnected: ${socket.id}`);
+    }
   });
-});
 
-// Helper function to generate a session code
-function generateSessionCode() {
-  const characters = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // Removed similar looking characters
-  let result = "NS-";
-  for (let i = 0; i < 5; i++) {
-    result += characters.charAt(Math.floor(Math.random() * characters.length));
+  // Store active sessions and users
+  const sessions = new Map();
+  const users = new Map();
+
+  // Helper function to broadcast session updates to all players in a session
+  const broadcastSessionUpdate = (sessionId) => {
+    const session = sessions.get(sessionId);
+    if (session) {
+      io.to(sessionId).emit('session_updated', session);
+      console.log(`Session update broadcast to all players in session: ${session.code}`);
+    }
+  };
+
+  // Helper function to broadcast global session list updates
+  const broadcastSessionsList = () => {
+    const publicSessions = Array.from(sessions.values())
+      .filter(session => session.privacy === 'public')
+      .map(session => ({
+        id: session.id,
+        code: session.code,
+        hostName: session.hostName,
+        activityType: session.activityType,
+        playerCount: session.currentPlayers.length,
+        maxPlayers: session.maxPlayers,
+      }));
+    
+    io.emit('sessions_list', publicSessions);
+    console.log(`Sessions list broadcast to all connected users`);
+  };
+
+  // Helper function to generate a session code
+  function generateSessionCode() {
+    const prefix = "NS";
+    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // Removed similar looking characters
+    let code = prefix + "-";
+    
+    for (let i = 0; i < 5; i++) {
+      code += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    
+    return code;
   }
-  return result;
-}
 
-// Start the server
-const PORT = process.env.PORT || 3001;
-server.listen(PORT, () => {
-  console.log(`Nexus Syndicate Multiplayer Server running on port ${PORT}`);
+  // Start the server
+  const PORT = process.env.PORT || 3001;
+  server.listen(PORT, () => {
+    console.log(`Nexus Syndicate Multiplayer Server running on port ${PORT}`);
+  });
 });

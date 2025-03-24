@@ -1,20 +1,39 @@
-import React, { useEffect, useState } from "react";
+import React, { useState, useEffect } from "react";
+import { toast } from "react-hot-toast";
 import { useNavigate } from "react-router-dom";
-import AptosWalletConnect from "../components/common/AptosWalletConnect";
-import ImageWithFallback from "../components/common/ImageWithFallback";
-import {
-  buyNFT,
-  buyResource,
-  sellNFT,
-  sellResource,
-  checkTransaction,
-} from "../utils/aptosUtils";
-import toast from "react-hot-toast";
-import { updateUserResource } from "../utils/resourceUtils";
 import authService from "../services/authService";
+import firestoreService, { 
+  MarketplaceListing, 
+  TransactionStatus as FirestoreTransactionStatus,
+  TransactionType 
+} from "../services/firestoreService";
+import { 
+  buyResource, 
+  buyNFT, 
+  sellResource, 
+  sellNFT, 
+  checkTransaction 
+} from "../utils/aptosUtils";
+
+// Transaction interface
+interface Transaction {
+  hash: string;
+  status: "pending" | "success" | "failed";
+  timestamp: number;
+}
 
 // Mock data for resources
-const resourcesData = [
+interface Resource {
+  id: number;
+  name: string;
+  icon: string;
+  price: number;
+  available: number;
+  type: "resource";
+  quantity?: number; // Add quantity for user resources
+}
+
+const resourcesData: Resource[] = [
   {
     id: 1,
     name: "Credits",
@@ -46,27 +65,23 @@ const resourcesData = [
     price: 0.2,
     available: 1200,
     type: "resource",
-  },
-  {
-    id: 5,
-    name: "Neural Processors",
-    icon: "🧠",
-    price: 0.8,
-    available: 180,
-    type: "resource",
-  },
-  {
-    id: 6,
-    name: "Influence Tokens",
-    icon: "🌐",
-    price: 0.3,
-    available: 3000,
-    type: "resource",
-  },
+  }
 ];
 
 // Mock data for NFTs
-const nftsData = [
+interface NFT {
+  id: number;
+  name: string;
+  image: string;
+  price: number;
+  rarity: string;
+  owner: string;
+  description: string;
+  type: "nft";
+  category: string;
+}
+
+const nftsData: NFT[] = [
   {
     id: 101,
     name: "Cyber Samurai",
@@ -90,123 +105,166 @@ const nftsData = [
       "An elite hacker agent specialized in breaching secure systems",
     type: "nft",
     category: "agent",
-  },
-  {
-    id: 103,
-    name: "Neon District",
-    image: "/images/nfts/territory1.png",
-    price: 5.0,
-    rarity: "Legendary",
-    owner: "0x9i0j...1k2l",
-    description: "A prime territory in the heart of the cyberpunk city",
-    type: "nft",
-    category: "territory",
-  },
-  {
-    id: 104,
-    name: "Tech Haven",
-    image: "/images/nfts/territory2.png",
-    price: 3.2,
-    rarity: "Epic",
-    owner: "0x3m4n...5o6p",
-    description:
-      "A resource-rich territory with advanced technological infrastructure",
-    type: "nft",
-    category: "territory",
-  },
-  {
-    id: 105,
-    name: "Neural Implant",
-    image: "/images/nfts/equipment1.png",
-    price: 1.5,
-    rarity: "Rare",
-    owner: "0x7q8r...9s0t",
-    description: "An advanced neural implant that enhances agent capabilities",
-    type: "nft",
-    category: "equipment",
-  },
-  {
-    id: 106,
-    name: "Quantum Shield",
-    image: "/images/nfts/equipment2.png",
-    price: 1.2,
-    rarity: "Rare",
-    owner: "0x1u2v...3w4x",
-    description:
-      "A defensive equipment that provides protection against cyber attacks",
-    type: "nft",
-    category: "equipment",
-  },
+  }
 ];
-
-// Transaction status interface
-interface TransactionStatus {
-  hash: string;
-  status: "pending" | "success" | "failed";
-  timestamp: number;
-}
 
 const Marketplace: React.FC = () => {
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<"resources" | "nfts">("resources");
-  const [searchTerm, setSearchTerm] = useState("");
-  const [selectedCategory, setSelectedCategory] = useState("all");
-  const [walletAddress, setWalletAddress] = useState<string | null>(null);
-  const [showBuyModal, setShowBuyModal] = useState(false);
-  const [showSellModal, setShowSellModal] = useState(false);
-  const [selectedItem, setSelectedItem] = useState<any>(null);
-  const [quantity, setQuantity] = useState(1);
-  const [userResources, setUserResources] = useState<any[]>([
-    { id: 1, name: "Credits", icon: "💰", quantity: 5000, type: "resource" },
-    {
-      id: 2,
-      name: "Data Shards",
-      icon: "💾",
-      quantity: 1200,
-      type: "resource",
-    },
-    {
-      id: 3,
-      name: "Quantum Cores",
-      icon: "⚛️",
-      quantity: 30,
-      type: "resource",
-    },
-  ]);
-  const [userNFTs, setUserNFTs] = useState<any[]>([
-    {
-      id: 107,
-      name: "Shadow Runner",
-      image: "/images/nfts/agent3.png",
-      price: 2.0,
-      rarity: "Epic",
-      description: "A stealth agent specialized in covert operations",
-      type: "nft",
-      category: "agent",
-    },
-  ]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [recentTransactions, setRecentTransactions] = useState<
-    TransactionStatus[]
-  >([]);
-  const [showTransactionHistory, setShowTransactionHistory] = useState(false);
+  const [walletAddress, setWalletAddress] = useState<string>("");
+  const [userResources, setUserResources] = useState<Resource[]>([]);
+  const [userNFTs, setUserNFTs] = useState<NFT[]>([]);
+  const [selectedItem, setSelectedItem] = useState<Resource | NFT | null>(null);
+  const [quantity, setQuantity] = useState<number>(1);
+  const [showBuyModal, setShowBuyModal] = useState<boolean>(false);
+  const [showSellModal, setShowSellModal] = useState<boolean>(false);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [recentTransactions, setRecentTransactions] = useState<Transaction[]>([]);
+  const [activeTab, setActiveTab] = useState<"buy" | "sell" | "transactions">("buy");
+  const [selectedCategory, setSelectedCategory] = useState<string>("all");
+  const [searchQuery, setSearchQuery] = useState<string>("");
 
-  // Check if wallet is connected on component mount
+  // Check if wallet is connected
   useEffect(() => {
-    const storedAddress = localStorage.getItem("walletAddress");
-    if (storedAddress) {
-      setWalletAddress(storedAddress);
+    const user = authService.getUser();
+    if (user && user.walletAddress) {
+      setWalletAddress(user.walletAddress);
     }
   }, []);
 
+  // Load user data on component mount
+  useEffect(() => {
+    const currentUser = authService.getUser();
+    if (currentUser) {
+      setWalletAddress(currentUser.walletAddress);
+      
+      // Load user resources
+      if (currentUser.resources) {
+        setUserResources([
+          { 
+            id: 1, 
+            name: "Credits", 
+            icon: "💰", 
+            quantity: currentUser.resources.credits || 0, 
+            type: "resource",
+            price: 0.05,
+            available: 15000
+          },
+          { 
+            id: 2, 
+            name: "Data Shards", 
+            icon: "💾", 
+            quantity: currentUser.resources.dataShards || 0, 
+            type: "resource",
+            price: 0.1,
+            available: 8500
+          },
+          { 
+            id: 3, 
+            name: "Quantum Cores", 
+            icon: "⚛️", 
+            quantity: currentUser.resources.quantumCores || 0, 
+            type: "resource",
+            price: 0.5,
+            available: 250
+          },
+          { 
+            id: 4, 
+            name: "Synthetic Alloys", 
+            icon: "🔋", 
+            quantity: currentUser.resources.syntheticAlloys || 0, 
+            type: "resource",
+            price: 0.2,
+            available: 1200
+          }
+        ]);
+      }
+      
+      // Load user transactions
+      loadUserTransactions();
+      
+      // Load marketplace listings
+      loadMarketplaceListings();
+    }
+  }, []);
+
+  // Load user's transactions
+  const loadUserTransactions = async () => {
+    const currentUser = authService.getUser();
+    if (!currentUser || !currentUser.id) {
+      console.log("User not found, can't load transactions");
+      return;
+    }
+    
+    try {
+      const transactions = await firestoreService.getUserTransactions(currentUser.id);
+      
+      // Convert to UI transaction format
+      const uiTransactions: Transaction[] = transactions.map(tx => ({
+        hash: tx.txHash || tx.id || 'local-tx',
+        status: tx.status === FirestoreTransactionStatus.COMPLETED ? 'success' : 
+                tx.status === FirestoreTransactionStatus.FAILED ? 'failed' : 'pending',
+        timestamp: tx.createdAt instanceof Date ? tx.createdAt.getTime() : Date.now()
+      }));
+      
+      setRecentTransactions(uiTransactions);
+    } catch (error) {
+      console.error("Error loading transactions:", error);
+    }
+  };
+
+  // Load marketplace listings
+  const loadMarketplaceListings = async () => {
+    try {
+      const listings = await firestoreService.getMarketplaceListings({
+        status: 'active'
+      });
+      
+      // Convert to UI format
+      const resourceListings: Resource[] = listings
+        .filter(listing => listing.itemType === 'resource')
+        .map(listing => ({
+          id: parseInt(listing.itemId) || parseInt(listing.id || '0'),
+          name: listing.itemName,
+          icon: listing.imageUrl || "/icons/credits.png",
+          price: listing.price,
+          available: listing.quantity,
+          type: "resource" as const,
+        }));
+      
+      const nftListings: NFT[] = listings
+        .filter(listing => listing.itemType === 'nft')
+        .map(listing => ({
+          id: parseInt(listing.itemId) || parseInt(listing.id || '0'),
+          name: listing.itemName,
+          image: listing.imageUrl || "/images/nfts/default.png",
+          price: listing.price,
+          rarity: "Epic",
+          owner: listing.sellerName,
+          description: listing.description || "",
+          type: "nft" as const,
+          category: listing.category || "agent",
+        }));
+      
+      // Merge with mock data for now (in production, you'd only use the database data)
+      const combinedResources = [...resourcesData, ...resourceListings];
+      const combinedNFTs = [...nftsData, ...nftListings];
+      
+      // Update state
+      setUserResources(combinedResources);
+      setUserNFTs(combinedNFTs);
+    } catch (error) {
+      console.error("Error loading marketplace listings:", error);
+    }
+  };
+
   // Filter items based on search term and category
-  const filteredResources = resourcesData.filter((resource) =>
-    resource.name.toLowerCase().includes(searchTerm.toLowerCase())
+  const filteredResources = userResources.filter((resource) =>
+    resource.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const filteredNFTs = nftsData.filter(
+  const filteredNFTs = userNFTs.filter(
     (nft) =>
-      nft.name.toLowerCase().includes(searchTerm.toLowerCase()) &&
+      nft.name.toLowerCase().includes(searchQuery.toLowerCase()) &&
       (selectedCategory === "all" || nft.category === selectedCategory)
   );
 
@@ -260,106 +318,6 @@ const Marketplace: React.FC = () => {
     }
   };
 
-  // Handle buy transaction
-  const handleBuy = async () => {
-    if (!walletAddress) {
-      toast.error("Please connect your wallet first");
-      return;
-    }
-
-    try {
-      // Show loading state
-      setIsLoading(true);
-
-      let txHash;
-      if (selectedItem.type === "resource") {
-        // Call Aptos contract to buy resource
-        txHash = await buyResource(walletAddress, selectedItem.name, quantity);
-
-        // Add transaction to history
-        addTransactionToHistory(txHash, "pending");
-
-        // Start polling for transaction status
-        pollTransactionStatus(txHash);
-
-        // Update user resources (in a production app, you would fetch the updated state from blockchain)
-        const existingResource = userResources.find(
-          (r) => r.id === selectedItem.id
-        );
-        
-        // Calculate new quantity
-        const newQuantity = existingResource 
-          ? existingResource.quantity + quantity 
-          : quantity;
-        
-        // Update UI state
-        if (existingResource) {
-          setUserResources(
-            userResources.map((r) =>
-              r.id === selectedItem.id
-                ? { ...r, quantity: newQuantity }
-                : r
-            )
-          );
-        } else {
-          setUserResources([
-            ...userResources,
-            {
-              id: selectedItem.id,
-              name: selectedItem.name,
-              icon: selectedItem.icon,
-              quantity: quantity,
-              type: "resource",
-            },
-          ]);
-        }
-        
-        // Update Firebase if this is the Credits resource
-        if (selectedItem.name === "Credits") {
-          const currentUser = authService.getUser();
-          if (currentUser && currentUser.resources) {
-            const updatedCredits = (currentUser.resources.credits || 0) + quantity;
-            updateUserResource('credits', updatedCredits)
-              .then(success => {
-                if (!success) {
-                  console.error('Failed to update credits in Firebase');
-                }
-              });
-          }
-        }
-      } else if (selectedItem.type === "nft") {
-        // Call Aptos contract to buy NFT
-        txHash = await buyNFT(walletAddress, selectedItem.id);
-
-        // Add transaction to history
-        addTransactionToHistory(txHash, "pending");
-
-        // Start polling for transaction status
-        pollTransactionStatus(txHash);
-
-        // Add NFT to user's collection
-        setUserNFTs([...userNFTs, { ...selectedItem, owner: walletAddress }]);
-      }
-
-      setIsLoading(false);
-      if (txHash) {
-        toast.success(
-          `Transaction submitted! Hash: ${txHash.slice(0, 8)}...${txHash.slice(
-            -6
-          )}`
-        );
-      } else {
-        toast.success("Transaction submitted!");
-      }
-      setShowBuyModal(false);
-      setQuantity(1);
-    } catch (error) {
-      console.error("Transaction failed:", error);
-      setIsLoading(false);
-      toast.error("Transaction failed. Please try again.");
-    }
-  };
-
   // Handle sell transaction
   const handleSell = async () => {
     if (!walletAddress) {
@@ -371,10 +329,44 @@ const Marketplace: React.FC = () => {
       // Show loading state
       setIsLoading(true);
 
+      // Get current user
+      const currentUser = authService.getUser();
+      if (!currentUser || !currentUser.id) {
+        toast.error("User not found. Please log in again.");
+        setIsLoading(false);
+        return;
+      }
+
       let txHash;
-      if (selectedItem.type === "resource") {
+      if (selectedItem && selectedItem.type === "resource") {
+        // Check if resource exists in user's inventory
+        const existingResource = userResources.find(
+          (r) => r.name === selectedItem.name
+        );
+
+        if (!existingResource) {
+          toast.error(`You don't have any ${selectedItem.name} to sell`);
+          setIsLoading(false);
+          return;
+        }
+
+        // Check if user has enough of the resource
+        if ((existingResource.quantity || 0) < quantity) {
+          toast.error(
+            `You don't have enough ${selectedItem.name}. You have ${
+              existingResource.quantity || 0
+            } but trying to sell ${quantity}`
+          );
+          setIsLoading(false);
+          return;
+        }
+
         // Call Aptos contract to sell resource
-        txHash = await sellResource(walletAddress, selectedItem.name, quantity);
+        txHash = await sellResource(
+          walletAddress,
+          selectedItem.name,
+          quantity
+        );
 
         // Add transaction to history
         addTransactionToHistory(txHash, "pending");
@@ -382,46 +374,85 @@ const Marketplace: React.FC = () => {
         // Start polling for transaction status
         pollTransactionStatus(txHash);
 
-        // Calculate new quantity
-        const existingResource = userResources.find(
-          (r) => r.id === selectedItem.id
-        );
+        // Create a marketplace listing
+        const listing: Omit<MarketplaceListing, 'id' | 'createdAt' | 'updatedAt'> = {
+          sellerId: currentUser.id,
+          sellerName: currentUser.username || walletAddress.slice(0, 6) + "..." + walletAddress.slice(-4),
+          itemId: selectedItem.id.toString(),
+          itemName: selectedItem.name,
+          itemType: "resource",
+          quantity: quantity,
+          price: selectedItem.price * 0.95, // 5% discount when selling back
+          description: `${selectedItem.name} resource`,
+          imageUrl: selectedItem.icon ? `/icons/${selectedItem.name.toLowerCase().replace(/\s+/g, '_')}.png` : undefined,
+          status: 'active'
+        };
+
+        const createdListing = await firestoreService.createMarketplaceListing(listing);
         
-        if (existingResource) {
-          const newQuantity = existingResource.quantity - quantity;
+        if (createdListing) {
+          // Update user's resources in Firestore
+          const updatedResources = { ...currentUser.resources };
           
-          // Update UI state
-          setUserResources(
-            userResources
-              .map((r) =>
-                r.id === selectedItem.id
-                  ? { ...r, quantity: newQuantity }
-                  : r
-              )
-              .filter((r) => r.quantity > 0)
+          // Map resource name to the correct property in user resources
+          let resourceKey: keyof typeof updatedResources;
+          switch (selectedItem.name.toLowerCase()) {
+            case "credits":
+              resourceKey = "credits";
+              break;
+            case "data shards":
+              resourceKey = "dataShards";
+              break;
+            case "quantum cores":
+              resourceKey = "quantumCores";
+              break;
+            case "synthetic alloys":
+              resourceKey = "syntheticAlloys";
+              break;
+            default:
+              resourceKey = "credits";
+          }
+          
+          // Update the resource quantity
+          if (updatedResources && updatedResources[resourceKey] !== undefined) {
+            const currentValue = updatedResources[resourceKey] || 0;
+            updatedResources[resourceKey] = Math.max(0, currentValue - quantity);
+          }
+          
+          // Ensure all required properties are defined with default values
+          const resourcesUpdate = {
+            credits: updatedResources?.credits || 0,
+            dataShards: updatedResources?.dataShards || 0,
+            syntheticAlloys: updatedResources?.syntheticAlloys || 0,
+            quantumCores: updatedResources?.quantumCores || 0
+          };
+          
+          // Update Firestore
+          const success = await firestoreService.updateUserResources(
+            currentUser.id,
+            resourcesUpdate
           );
           
-          // Update Firebase if this is the Credits resource
-          if (selectedItem.name === "Credits") {
-            const currentUser = authService.getUser();
-            if (currentUser && currentUser.resources) {
-              const updatedCredits = Math.max((currentUser.resources.credits || 0) - quantity, 0);
-              updateUserResource('credits', updatedCredits)
-                .then(success => {
-                  if (!success) {
-                    console.error('Failed to update credits in Firebase');
-                  }
-                });
-            }
+          if (success) {
+            toast.success(`Successfully listed ${quantity} ${selectedItem.name} for sale!`);
+            
+            // Update UI state
+            setUserResources(
+              userResources.map((r) =>
+                r.name === selectedItem.name
+                  ? { ...r, quantity: (r.quantity || 0) - quantity }
+                  : r
+              )
+            );
+          } else {
+            toast.error("Failed to update resources. Please try again.");
           }
+        } else {
+          toast.error("Failed to create marketplace listing");
         }
-      } else if (selectedItem.type === "nft") {
+      } else if (selectedItem && selectedItem.type === "nft") {
         // Call Aptos contract to sell NFT
-        txHash = await sellNFT(
-          walletAddress,
-          selectedItem.id,
-          selectedItem.price || 1.0
-        );
+        txHash = await sellNFT(walletAddress, selectedItem.id, selectedItem.price);
 
         // Add transaction to history
         addTransactionToHistory(txHash, "pending");
@@ -429,623 +460,557 @@ const Marketplace: React.FC = () => {
         // Start polling for transaction status
         pollTransactionStatus(txHash);
 
-        // Remove NFT from user's collection
-        setUserNFTs(userNFTs.filter((nft) => nft.id !== selectedItem.id));
-      }
+        // Create a marketplace listing
+        const listing: Omit<MarketplaceListing, 'id' | 'createdAt' | 'updatedAt'> = {
+          sellerId: currentUser.id,
+          sellerName: currentUser.username || walletAddress.slice(0, 6) + "..." + walletAddress.slice(-4),
+          itemId: selectedItem.id.toString(),
+          itemName: selectedItem.name,
+          itemType: "nft",
+          quantity: 1, // NFTs are unique
+          price: selectedItem.price,
+          description: selectedItem.description || `${selectedItem.name} NFT`,
+          imageUrl: selectedItem.image,
+          category: selectedItem.category,
+          status: 'active'
+        };
 
-      setIsLoading(false);
-      if (txHash) {
-        toast.success(
-          `Transaction submitted! Hash: ${txHash.slice(0, 8)}...${txHash.slice(
-            -6
-          )}`
-        );
-      } else {
-        toast.success("Transaction submitted!");
+        const createdListing = await firestoreService.createMarketplaceListing(listing);
+        
+        if (createdListing) {
+          toast.success(`Successfully listed ${selectedItem.name} NFT for sale!`);
+          
+          // Remove NFT from user's collection in UI
+          setUserNFTs(userNFTs.filter((nft) => nft.id !== selectedItem.id));
+        } else {
+          toast.error("Failed to create marketplace listing");
+        }
       }
-      setShowSellModal(false);
-      setQuantity(1);
     } catch (error) {
-      console.error("Transaction failed:", error);
-      setIsLoading(false);
+      console.error("Error during sale:", error);
       toast.error("Transaction failed. Please try again.");
+    } finally {
+      // Hide loading state
+      setIsLoading(false);
+      // Close modal
+      setShowSellModal(false);
     }
   };
 
+  // Handle buy transaction
+  const handleBuy = async () => {
+    if (!walletAddress) {
+      toast.error("Please connect your wallet first");
+      return;
+    }
+
+    try {
+      // Show loading state
+      setIsLoading(true);
+
+      // Get current user
+      const currentUser = authService.getUser();
+      if (!currentUser || !currentUser.id) {
+        toast.error("User not found. Please log in again.");
+        setIsLoading(false);
+        return;
+      }
+
+      let txHash;
+      if (selectedItem && selectedItem.type === "resource") {
+        // Call Aptos contract to buy resource
+        txHash = await buyResource(walletAddress, selectedItem.name, quantity);
+
+        // Add transaction to history
+        addTransactionToHistory(txHash, "pending");
+
+        // Start polling for transaction status
+        pollTransactionStatus(txHash);
+
+        // Create a marketplace listing for this purchase
+        const listing: Omit<MarketplaceListing, 'id' | 'createdAt' | 'updatedAt'> = {
+          sellerId: "MARKETPLACE", // System marketplace
+          sellerName: "Nexus Marketplace",
+          itemId: selectedItem.id.toString(),
+          itemName: selectedItem.name,
+          itemType: "resource",
+          quantity: quantity,
+          price: selectedItem.price,
+          description: `${selectedItem.name} resource`,
+          imageUrl: selectedItem.icon ? `/icons/${selectedItem.name.toLowerCase().replace(/\s+/g, '_')}.png` : undefined,
+          status: 'active'
+        };
+
+        // Create a temporary listing
+        const createdListing = await firestoreService.createMarketplaceListing(listing);
+        
+        if (createdListing && createdListing.id) {
+          // Process the purchase in Firestore
+          const success = await firestoreService.processMarketplacePurchase(
+            createdListing.id,
+            currentUser.id,
+            quantity,
+            txHash
+          );
+          
+          if (success) {
+            toast.success(`Successfully purchased ${quantity} ${selectedItem.name}!`);
+            
+            // Refresh user resources from Firestore
+            const updatedUser = await firestoreService.getUserById(currentUser.id);
+            if (updatedUser && updatedUser.resources) {
+              // Update UI state with the latest resources
+              setUserResources([
+                { 
+                  id: 1, 
+                  name: "Credits", 
+                  icon: "💰", 
+                  quantity: updatedUser.resources.credits || 0, 
+                  type: "resource" as const,
+                  price: 0.05,
+                  available: 15000
+                },
+                { 
+                  id: 2, 
+                  name: "Data Shards", 
+                  icon: "💾", 
+                  quantity: updatedUser.resources.dataShards || 0, 
+                  type: "resource" as const,
+                  price: 0.1,
+                  available: 8500
+                },
+                { 
+                  id: 3, 
+                  name: "Quantum Cores", 
+                  icon: "⚛️", 
+                  quantity: updatedUser.resources.quantumCores || 0, 
+                  type: "resource" as const,
+                  price: 0.5,
+                  available: 250
+                },
+                { 
+                  id: 4, 
+                  name: "Synthetic Alloys", 
+                  icon: "🔋", 
+                  quantity: updatedUser.resources.syntheticAlloys || 0, 
+                  type: "resource" as const,
+                  price: 0.2,
+                  available: 1200
+                }
+              ]);
+            }
+          } else {
+            toast.error("Failed to process purchase. Please try again.");
+          }
+        } else {
+          toast.error("Failed to create marketplace listing");
+        }
+      } else if (selectedItem && selectedItem.type === "nft") {
+        // Call Aptos contract to buy NFT
+        txHash = await buyNFT(walletAddress, selectedItem.id);
+
+        // Add transaction to history
+        addTransactionToHistory(txHash, "pending");
+
+        // Start polling for transaction status
+        pollTransactionStatus(txHash);
+
+        // Create a marketplace listing for this purchase
+        const listing: Omit<MarketplaceListing, 'id' | 'createdAt' | 'updatedAt'> = {
+          sellerId: "MARKETPLACE", // System marketplace
+          sellerName: "Nexus Marketplace",
+          itemId: selectedItem.id.toString(),
+          itemName: selectedItem.name,
+          itemType: "nft",
+          quantity: 1, // NFTs are unique
+          price: selectedItem.price,
+          description: selectedItem.description || `${selectedItem.name} NFT`,
+          imageUrl: selectedItem.image,
+          category: selectedItem.category,
+          status: 'active'
+        };
+
+        // Create a temporary listing
+        const createdListing = await firestoreService.createMarketplaceListing(listing);
+        
+        if (createdListing && createdListing.id) {
+          // Process the purchase in Firestore
+          const success = await firestoreService.processMarketplacePurchase(
+            createdListing.id,
+            currentUser.id,
+            1, // NFTs are unique
+            txHash
+          );
+          
+          if (success) {
+            toast.success(`Successfully purchased ${selectedItem.name} NFT!`);
+            
+            // Add NFT to user's collection
+            setUserNFTs([...userNFTs, { ...selectedItem, owner: walletAddress }]);
+          } else {
+            toast.error("Failed to process purchase. Please try again.");
+          }
+        } else {
+          toast.error("Failed to create marketplace listing");
+        }
+      }
+    } catch (error) {
+      console.error("Error during purchase:", error);
+      toast.error("Transaction failed. Please try again.");
+    } finally {
+      // Hide loading state
+      setIsLoading(false);
+      // Close modal
+      setShowBuyModal(false);
+    }
+  };
+
+  // Handle item click for buying
+  const handleItemClick = (item: Resource | NFT) => {
+    setSelectedItem(item);
+    setQuantity(1);
+    setShowBuyModal(true);
+  };
+
+  // Handle item click for selling
+  const handleSellClick = (item: Resource | NFT) => {
+    setSelectedItem(item);
+    setQuantity(1);
+    setShowSellModal(true);
+  };
+
   return (
-    <div className="min-h-screen bg-dark-blue p-4">
-      <div className="max-w-7xl mx-auto">
-        {/* Header */}
-        <div className="flex flex-col md:flex-row justify-between items-center mb-6">
-          <div className="flex items-center mb-4 md:mb-0">
-            <button
-              onClick={() => navigate("/dashboard")}
-              className="mr-4 text-neon-blue hover:text-neon-pink transition-colors"
-            >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                className="h-6 w-6"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M10 19l-7-7m0 0l7-7m-7 7h18"
-                />
-              </svg>
-            </button>
-            <h1 className="text-3xl font-cyber text-glow-blue">MARKETPLACE</h1>
-          </div>
+    <div className="container mx-auto px-4 py-8">
+      <h1 className="text-3xl font-bold mb-8 text-center text-primary">
+        Nexus Marketplace
+      </h1>
 
-          <div className="flex items-center space-x-4">
-            <button
-              onClick={() => setShowTransactionHistory(!showTransactionHistory)}
-              className="cyber-button-small bg-neon-purple bg-opacity-20 hover:bg-opacity-30 text-neon-purple"
-            >
-              {recentTransactions.length > 0 && (
-                <span className="absolute -top-1 -right-1 bg-neon-purple text-black text-xs rounded-full h-5 w-5 flex items-center justify-center">
-                  {
-                    recentTransactions.filter((tx) => tx.status === "pending")
-                      .length
-                  }
-                </span>
-              )}
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                className="h-5 w-5 mr-1"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
-                />
-              </svg>
-              Transactions
-            </button>
-            <AptosWalletConnect
-              onWalletConnect={(address) => setWalletAddress(address)}
-            />
-          </div>
-        </div>
-
-        {/* Transaction History Modal */}
-        {showTransactionHistory && (
-          <div className="cyber-panel p-4 mb-6">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-cyber text-neon-blue">
-                RECENT TRANSACTIONS
-              </h2>
-              <button
-                onClick={() => setShowTransactionHistory(false)}
-                className="text-light-gray hover:text-white"
-              >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  className="h-5 w-5"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M6 18L18 6M6 6l12 12"
-                  />
-                </svg>
-              </button>
-            </div>
-
-            {recentTransactions.length === 0 ? (
-              <p className="text-light-gray text-center py-4">
-                No recent transactions
-              </p>
-            ) : (
-              <div className="space-y-2">
-                {recentTransactions.map((tx, index) => (
-                  <div
-                    key={index}
-                    className="flex justify-between items-center p-2 border-b border-gray-700"
-                  >
-                    <div className="flex items-center">
-                      <span
-                        className={`h-2 w-2 rounded-full mr-2 ${
-                          tx.status === "pending"
-                            ? "bg-yellow-500"
-                            : tx.status === "success"
-                            ? "bg-green-500"
-                            : "bg-red-500"
-                        }`}
-                      ></span>
-                      <span className="text-light-gray font-mono text-sm">
-                        {tx.hash.slice(0, 8)}...{tx.hash.slice(-6)}
-                      </span>
-                    </div>
-                    <div className="flex items-center">
-                      <span
-                        className={`text-xs px-2 py-1 rounded ${
-                          tx.status === "pending"
-                            ? "bg-yellow-900 text-yellow-300"
-                            : tx.status === "success"
-                            ? "bg-green-900 text-green-300"
-                            : "bg-red-900 text-red-300"
-                        }`}
-                      >
-                        {tx.status.toUpperCase()}
-                      </span>
-                      <span className="text-gray-500 text-xs ml-2">
-                        {new Date(tx.timestamp).toLocaleTimeString()}
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Tabs */}
-        <div className="flex border-b border-neon-blue mb-6">
+      {/* Tabs */}
+      <div className="flex justify-center mb-8">
+        <div className="tabs tabs-boxed">
           <button
-            className={`px-4 py-2 font-cyber text-sm ${
-              activeTab === "resources"
-                ? "text-neon-blue border-b-2 border-neon-blue"
-                : "text-light-gray"
-            }`}
-            onClick={() => setActiveTab("resources")}
+            className={`tab ${activeTab === "buy" ? "tab-active" : ""}`}
+            onClick={() => setActiveTab("buy")}
           >
-            RESOURCES
+            Buy
           </button>
           <button
-            className={`px-4 py-2 font-cyber text-sm ${
-              activeTab === "nfts"
-                ? "text-neon-blue border-b-2 border-neon-blue"
-                : "text-light-gray"
-            }`}
-            onClick={() => setActiveTab("nfts")}
+            className={`tab ${activeTab === "sell" ? "tab-active" : ""}`}
+            onClick={() => setActiveTab("sell")}
           >
-            NFTs
+            Sell
+          </button>
+          <button
+            className={`tab ${activeTab === "transactions" ? "tab-active" : ""}`}
+            onClick={() => setActiveTab("transactions")}
+          >
+            Transactions
           </button>
         </div>
+      </div>
 
-        {/* Search and Filters */}
-        <div className="flex flex-col md:flex-row justify-between items-center mb-6">
-          <div className="w-full md:w-1/3 mb-4 md:mb-0">
-            <div className="relative">
-              <input
-                type="text"
-                placeholder="Search marketplace..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full bg-dark-gray text-light-gray border border-neon-blue p-2 pl-10 rounded focus:outline-none focus:ring-1 focus:ring-neon-blue"
-              />
-              <svg
-                className="absolute left-3 top-2.5 h-5 w-5 text-light-gray"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-                xmlns="http://www.w3.org/2000/svg"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-                />
-              </svg>
-            </div>
-          </div>
-
-          {activeTab === "nfts" && (
-            <div className="flex space-x-2">
+      {/* Buy Tab */}
+      {activeTab === "buy" && (
+        <div>
+          {/* Category Filter */}
+          <div className="flex justify-center mb-6">
+            <div className="btn-group">
               <button
-                className={`px-3 py-1 text-xs rounded ${
-                  selectedCategory === "all"
-                    ? "bg-neon-blue bg-opacity-20 text-neon-blue"
-                    : "text-light-gray"
-                }`}
+                className={`btn ${selectedCategory === "all" ? "btn-active" : ""}`}
                 onClick={() => setSelectedCategory("all")}
               >
                 All
               </button>
               <button
-                className={`px-3 py-1 text-xs rounded ${
-                  selectedCategory === "agent"
-                    ? "bg-neon-pink bg-opacity-20 text-neon-pink"
-                    : "text-light-gray"
-                }`}
-                onClick={() => setSelectedCategory("agent")}
+                className={`btn ${selectedCategory === "resources" ? "btn-active" : ""}`}
+                onClick={() => setSelectedCategory("resources")}
               >
-                Agents
+                Resources
               </button>
               <button
-                className={`px-3 py-1 text-xs rounded ${
-                  selectedCategory === "territory"
-                    ? "bg-neon-green bg-opacity-20 text-neon-green"
-                    : "text-light-gray"
-                }`}
-                onClick={() => setSelectedCategory("territory")}
+                className={`btn ${selectedCategory === "weapons" ? "btn-active" : ""}`}
+                onClick={() => setSelectedCategory("weapons")}
               >
-                Territories
+                Weapons
               </button>
               <button
-                className={`px-3 py-1 text-xs rounded ${
-                  selectedCategory === "equipment"
-                    ? "bg-neon-purple bg-opacity-20 text-neon-purple"
-                    : "text-light-gray"
-                }`}
-                onClick={() => setSelectedCategory("equipment")}
+                className={`btn ${selectedCategory === "armor" ? "btn-active" : ""}`}
+                onClick={() => setSelectedCategory("armor")}
               >
-                Equipment
+                Armor
+              </button>
+              <button
+                className={`btn ${selectedCategory === "collectibles" ? "btn-active" : ""}`}
+                onClick={() => setSelectedCategory("collectibles")}
+              >
+                Collectibles
               </button>
             </div>
-          )}
-        </div>
+          </div>
 
-        {/* Main Content */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {activeTab === "resources"
-            ? filteredResources.map((resource) => (
+          {/* Items Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            {/* Resources */}
+            {(selectedCategory === "all" || selectedCategory === "resources") &&
+              filteredResources.map((resource) => (
                 <div
                   key={resource.id}
-                  className="cyber-panel p-4 flex flex-col h-full"
+                  className="card bg-base-100 shadow-xl hover:shadow-2xl transition-all cursor-pointer"
+                  onClick={() => handleItemClick(resource)}
                 >
-                  <div className="flex justify-between items-center mb-4">
-                    <div className="flex items-center">
+                  <div className="card-body">
+                    <h2 className="card-title">
                       <span className="text-2xl mr-2">{resource.icon}</span>
-                      <h3 className="text-lg font-cyber text-neon-blue">
-                        {resource.name}
-                      </h3>
-                    </div>
-                    <div className="text-neon-green font-mono">
-                      {resource.price} APT
+                      {resource.name}
+                    </h2>
+                    <p>Price: {resource.price} APT</p>
+                    <p>Available: {resource.available}</p>
+                    <div className="card-actions justify-end mt-4">
+                      <button
+                        className="btn btn-primary"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleItemClick(resource);
+                        }}
+                      >
+                        Buy
+                      </button>
                     </div>
                   </div>
-                  <div className="text-sm text-light-gray mb-4">
-                    Available: {resource.available}
+                </div>
+              ))}
+
+            {/* NFTs */}
+            {(selectedCategory === "all" ||
+              selectedCategory === "weapons" ||
+              selectedCategory === "armor" ||
+              selectedCategory === "collectibles") &&
+              filteredNFTs.map((nft) => (
+                <div
+                  key={nft.id}
+                  className="card bg-base-100 shadow-xl hover:shadow-2xl transition-all cursor-pointer"
+                  onClick={() => handleItemClick(nft)}
+                >
+                  <figure className="px-4 pt-4">
+                    <img
+                      src={nft.image}
+                      alt={nft.name}
+                      className="rounded-xl h-48 w-full object-cover"
+                    />
+                  </figure>
+                  <div className="card-body">
+                    <h2 className="card-title">{nft.name}</h2>
+                    <p className="text-sm text-gray-500">{nft.category}</p>
+                    <p className="mt-2">{nft.description}</p>
+                    <p className="font-bold mt-2">Price: {nft.price} APT</p>
+                    <div className="card-actions justify-end mt-4">
+                      <button
+                        className="btn btn-primary"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleItemClick(nft);
+                        }}
+                      >
+                        Buy
+                      </button>
+                    </div>
                   </div>
-                  <div className="mt-auto flex justify-between">
+                </div>
+              ))}
+          </div>
+        </div>
+      )}
+
+      {/* Sell Tab */}
+      {activeTab === "sell" && (
+        <div>
+          <h2 className="text-xl font-bold mb-4">Your Resources</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+            {userResources.map((resource) => (
+              <div
+                key={resource.id}
+                className="card bg-base-100 shadow-xl hover:shadow-2xl transition-all cursor-pointer"
+                onClick={() => handleSellClick(resource)}
+              >
+                <div className="card-body">
+                  <h2 className="card-title">
+                    <span className="text-2xl mr-2">{resource.icon}</span>
+                    {resource.name}
+                  </h2>
+                  <p>Owned: {resource.quantity || 0}</p>
+                  <p>Value: {(resource.price * 0.95).toFixed(2)} APT each</p>
+                  <div className="card-actions justify-end mt-4">
                     <button
-                      className="cyber-button-small bg-neon-blue bg-opacity-20 hover:bg-opacity-30 text-neon-blue"
-                      onClick={() => {
-                        setSelectedItem(resource);
-                        setShowBuyModal(true);
+                      className="btn btn-secondary"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleSellClick(resource);
                       }}
+                      disabled={(resource.quantity || 0) <= 0}
                     >
-                      Buy
+                      Sell
                     </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <h2 className="text-xl font-bold mb-4">Your NFTs</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            {userNFTs.map((nft) => (
+              <div
+                key={nft.id}
+                className="card bg-base-100 shadow-xl hover:shadow-2xl transition-all cursor-pointer"
+                onClick={() => handleSellClick(nft)}
+              >
+                <figure className="px-4 pt-4">
+                  <img
+                    src={nft.image}
+                    alt={nft.name}
+                    className="rounded-xl h-48 w-full object-cover"
+                  />
+                </figure>
+                <div className="card-body">
+                  <h2 className="card-title">{nft.name}</h2>
+                  <p className="text-sm text-gray-500">{nft.category}</p>
+                  <p className="mt-2">{nft.description}</p>
+                  <p className="font-bold mt-2">Value: {nft.price} APT</p>
+                  <div className="card-actions justify-end mt-4">
                     <button
-                      className="cyber-button-small bg-neon-pink bg-opacity-20 hover:bg-opacity-30 text-neon-pink"
-                      onClick={() => {
-                        const userResource = userResources.find(
-                          (r) => r.id === resource.id
-                        );
-                        if (userResource) {
-                          setSelectedItem(userResource);
-                          setShowSellModal(true);
-                        } else {
-                          toast.error(
-                            `You don't have any ${resource.name} to sell`
-                          );
-                        }
+                      className="btn btn-secondary"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleSellClick(nft);
                       }}
                     >
                       Sell
                     </button>
                   </div>
                 </div>
-              ))
-            : filteredNFTs.map((nft) => (
-                <div
-                  key={nft.id}
-                  className="cyber-panel p-4 flex flex-col h-full"
-                >
-                  <div className="mb-4 relative">
-                    <ImageWithFallback
-                      src={nft.image}
-                      alt={nft.name}
-                      className="w-full h-40 object-cover rounded"
-                    />
-                    <div
-                      className={`absolute top-2 right-2 px-2 py-1 text-xs rounded ${
-                        nft.rarity === "Legendary"
-                          ? "bg-neon-pink text-dark-blue"
-                          : nft.rarity === "Epic"
-                          ? "bg-neon-purple text-dark-blue"
-                          : "bg-neon-blue text-dark-blue"
-                      }`}
-                    >
-                      {nft.rarity}
-                    </div>
-                  </div>
-                  <h3 className="text-lg font-cyber text-neon-blue mb-2">
-                    {nft.name}
-                  </h3>
-                  <p className="text-sm text-light-gray mb-2">
-                    {nft.description}
-                  </p>
-                  <div className="text-xs text-light-gray mb-4">
-                    Owner: {nft.owner}
-                  </div>
-                  <div className="mt-auto flex justify-between items-center">
-                    <div className="text-neon-green font-mono">
-                      {nft.price} APT
-                    </div>
-                    <button
-                      className="cyber-button-small bg-neon-blue bg-opacity-20 hover:bg-opacity-30 text-neon-blue"
-                      onClick={() => {
-                        setSelectedItem(nft);
-                        setShowBuyModal(true);
-                      }}
-                    >
-                      Buy NFT
-                    </button>
-                  </div>
-                </div>
-              ))}
-        </div>
-
-        {/* User's Inventory */}
-        <div className="mt-8">
-          <h2 className="text-xl font-cyber text-glow-purple mb-4">
-            YOUR INVENTORY
-          </h2>
-
-          {/* Resources */}
-          <div className="mb-6">
-            <h3 className="text-lg font-cyber text-neon-blue mb-2">
-              Resources
-            </h3>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              {userResources.map((resource) => (
-                <div
-                  key={resource.id}
-                  className="cyber-panel p-3 flex items-center justify-between"
-                >
-                  <div className="flex items-center">
-                    <span className="text-xl mr-2">{resource.icon}</span>
-                    <div>
-                      <div className="text-sm font-cyber text-neon-blue">
-                        {resource.name}
-                      </div>
-                      <div className="text-xs text-light-gray">
-                        {resource.quantity}
-                      </div>
-                    </div>
-                  </div>
-                  <button
-                    className="text-xs text-neon-pink hover:text-neon-purple"
-                    onClick={() => {
-                      setSelectedItem(resource);
-                      setShowSellModal(true);
-                    }}
-                  >
-                    Sell
-                  </button>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* NFTs */}
-          <div>
-            <h3 className="text-lg font-cyber text-neon-blue mb-2">NFTs</h3>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {userNFTs.length > 0 ? (
-                userNFTs.map((nft) => (
-                  <div key={nft.id} className="cyber-panel p-3">
-                    <div className="mb-2">
-                      <ImageWithFallback
-                        src={nft.image}
-                        alt={nft.name}
-                        className="w-full h-32 object-cover rounded"
-                      />
-                    </div>
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <div className="text-sm font-cyber text-neon-blue">
-                          {nft.name}
-                        </div>
-                        <div className="text-xs text-light-gray">
-                          {nft.rarity}
-                        </div>
-                      </div>
-                      <button
-                        className="text-xs text-neon-pink hover:text-neon-purple"
-                        onClick={() => {
-                          setSelectedItem(nft);
-                          setShowSellModal(true);
-                        }}
-                      >
-                        Sell
-                      </button>
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <div className="col-span-3 text-center py-4 text-light-gray">
-                  You don't own any NFTs yet
-                </div>
-              )}
-            </div>
+              </div>
+            ))}
+            {userNFTs.length === 0 && (
+              <div className="col-span-4 text-center py-8 text-gray-500">
+                You don't own any NFTs yet.
+              </div>
+            )}
           </div>
         </div>
-      </div>
+      )}
+
+      {/* Transactions Tab */}
+      {activeTab === "transactions" && (
+        <div>
+          <h2 className="text-xl font-bold mb-4">Recent Transactions</h2>
+          {recentTransactions.length > 0 ? (
+            <div className="overflow-x-auto">
+              <table className="table w-full">
+                <thead>
+                  <tr>
+                    <th>Transaction Hash</th>
+                    <th>Status</th>
+                    <th>Time</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {recentTransactions.map((tx, index) => (
+                    <tr key={index}>
+                      <td>
+                        <a
+                          href={`https://explorer.aptoslabs.com/txn/${tx.hash}?network=testnet`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="link link-primary"
+                        >
+                          {tx.hash.slice(0, 8)}...{tx.hash.slice(-6)}
+                        </a>
+                      </td>
+                      <td>
+                        <span
+                          className={`badge ${
+                            tx.status === "pending"
+                              ? "badge-warning"
+                              : tx.status === "success"
+                              ? "badge-success"
+                              : "badge-error"
+                          }`}
+                        >
+                          {tx.status}
+                        </span>
+                      </td>
+                      <td>{new Date(tx.timestamp).toLocaleString()}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="text-center py-8 text-gray-500">
+              No transactions yet.
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Buy Modal */}
       {showBuyModal && selectedItem && (
-        <div className="fixed inset-0 bg-dark-blue bg-opacity-90 z-50 flex items-center justify-center">
-          <div className="cyber-panel modal-content cyber-glass max-w-md w-full p-6">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-cyber text-glow-green">
-                BUY {selectedItem.name.toUpperCase()}
-              </h2>
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-base-100 p-6 rounded-lg w-full max-w-md">
+            <h2 className="text-2xl font-bold mb-4">
+              Buy {selectedItem.name}
+            </h2>
+            {selectedItem.type === "resource" ? (
+              <div className="mb-4">
+                <label className="block text-sm font-medium mb-2">
+                  Quantity
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  max={selectedItem.available}
+                  value={quantity}
+                  onChange={(e) => setQuantity(parseInt(e.target.value) || 1)}
+                  className="input input-bordered w-full"
+                />
+              </div>
+            ) : (
+              <div className="mb-4">
+                <img
+                  src={selectedItem.image}
+                  alt={selectedItem.name}
+                  className="rounded-lg w-full h-48 object-cover mb-4"
+                />
+                <p>{selectedItem.description}</p>
+              </div>
+            )}
+            <div className="mb-6">
+              <p className="font-bold">
+                Total Price:{" "}
+                {selectedItem.type === "resource"
+                  ? (selectedItem.price * quantity).toFixed(2)
+                  : selectedItem.price}{" "}
+                APT
+              </p>
+            </div>
+            <div className="flex justify-end space-x-4">
               <button
+                className="btn btn-ghost"
                 onClick={() => setShowBuyModal(false)}
-                className="text-neon-blue hover:text-neon-pink transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                className="btn btn-primary"
+                onClick={handleBuy}
                 disabled={isLoading}
               >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  className="h-6 w-6"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M6 18L18 6M6 6l12 12"
-                  />
-                </svg>
+                {isLoading ? (
+                  <span className="loading loading-spinner"></span>
+                ) : (
+                  "Confirm Purchase"
+                )}
               </button>
-            </div>
-
-            <div className="mb-4">
-              {selectedItem.type === "nft" ? (
-                <div className="mb-4">
-                  <ImageWithFallback
-                    src={selectedItem.image}
-                    alt={selectedItem.name}
-                    className="w-full h-40 object-cover rounded mb-2"
-                  />
-                  <p className="text-sm text-light-gray">
-                    {selectedItem.description}
-                  </p>
-                </div>
-              ) : (
-                <div className="flex items-center mb-4">
-                  <span className="text-3xl mr-3">{selectedItem.icon}</span>
-                  <div>
-                    <h3 className="font-cyber text-neon-blue">
-                      {selectedItem.name}
-                    </h3>
-                    <p className="text-sm text-light-gray">
-                      Available: {selectedItem.available}
-                    </p>
-                  </div>
-                </div>
-              )}
-
-              <div className="flex justify-between items-center mb-4">
-                <div className="text-sm text-light-gray">Price per unit:</div>
-                <div className="text-neon-green font-mono">
-                  {selectedItem.price} APT
-                </div>
-              </div>
-
-              {selectedItem.type === "resource" && (
-                <div className="mb-4">
-                  <label className="block text-sm text-light-gray mb-1">
-                    Quantity:
-                  </label>
-                  <div className="flex items-center">
-                    <button
-                      className="bg-dark-gray px-3 py-1 text-neon-blue"
-                      onClick={() => setQuantity(Math.max(1, quantity - 1))}
-                      disabled={isLoading}
-                    >
-                      -
-                    </button>
-                    <input
-                      type="number"
-                      min="1"
-                      max={selectedItem.available}
-                      value={quantity}
-                      onChange={(e) =>
-                        setQuantity(
-                          Math.min(
-                            selectedItem.available,
-                            Math.max(1, parseInt(e.target.value) || 1)
-                          )
-                        )
-                      }
-                      className="w-20 text-center bg-dark-gray text-light-gray border-y border-neon-blue py-1"
-                      disabled={isLoading}
-                    />
-                    <button
-                      className="bg-dark-gray px-3 py-1 text-neon-blue"
-                      onClick={() =>
-                        setQuantity(
-                          Math.min(selectedItem.available, quantity + 1)
-                        )
-                      }
-                      disabled={isLoading}
-                    >
-                      +
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              <div className="flex justify-between items-center mb-6 pt-4 border-t border-neon-blue">
-                <div className="text-sm font-cyber text-light-gray">
-                  Total cost:
-                </div>
-                <div className="text-xl text-neon-green font-mono">
-                  {(
-                    selectedItem.price *
-                    (selectedItem.type === "resource" ? quantity : 1)
-                  ).toFixed(2)}{" "}
-                  APT
-                </div>
-              </div>
-
-              <div className="flex justify-between">
-                <button
-                  className="cyber-button bg-dark-gray text-light-gray"
-                  onClick={() => setShowBuyModal(false)}
-                  disabled={isLoading}
-                >
-                  Cancel
-                </button>
-                <button
-                  className={`cyber-button ${
-                    isLoading
-                      ? "bg-dark-gray text-light-gray"
-                      : "bg-neon-green bg-opacity-20 text-neon-green"
-                  }`}
-                  onClick={handleBuy}
-                  disabled={isLoading}
-                >
-                  {isLoading ? (
-                    <div className="flex items-center">
-                      <svg
-                        className="animate-spin -ml-1 mr-2 h-4 w-4 text-neon-green"
-                        xmlns="http://www.w3.org/2000/svg"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                      >
-                        <circle
-                          className="opacity-25"
-                          cx="12"
-                          cy="12"
-                          r="10"
-                          stroke="currentColor"
-                          strokeWidth="4"
-                        ></circle>
-                        <path
-                          className="opacity-75"
-                          fill="currentColor"
-                          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                        ></path>
-                      </svg>
-                      Processing...
-                    </div>
-                  ) : (
-                    "Confirm Purchase"
-                  )}
-                </button>
-              </div>
             </div>
           </div>
         </div>
@@ -1053,171 +1018,70 @@ const Marketplace: React.FC = () => {
 
       {/* Sell Modal */}
       {showSellModal && selectedItem && (
-        <div className="fixed inset-0 bg-dark-blue bg-opacity-90 z-50 flex items-center justify-center">
-          <div className="cyber-panel modal-content cyber-glass max-w-md w-full p-6">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-cyber text-glow-pink">
-                SELL {selectedItem.name.toUpperCase()}
-              </h2>
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-base-100 p-6 rounded-lg w-full max-w-md">
+            <h2 className="text-2xl font-bold mb-4">
+              Sell {selectedItem.name}
+            </h2>
+            {selectedItem.type === "resource" ? (
+              <div className="mb-4">
+                <label className="block text-sm font-medium mb-2">
+                  Quantity
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  max={
+                    userResources.find((r) => r.name === selectedItem.name)
+                      ?.quantity || 0
+                  }
+                  value={quantity}
+                  onChange={(e) => setQuantity(parseInt(e.target.value) || 1)}
+                  className="input input-bordered w-full"
+                />
+              </div>
+            ) : (
+              <div className="mb-4">
+                <img
+                  src={selectedItem.image}
+                  alt={selectedItem.name}
+                  className="rounded-lg w-full h-48 object-cover mb-4"
+                />
+                <p>{selectedItem.description}</p>
+              </div>
+            )}
+            <div className="mb-6">
+              <p className="font-bold">
+                Total Value:{" "}
+                {selectedItem.type === "resource"
+                  ? ((selectedItem.price * 0.95) * quantity).toFixed(2)
+                  : selectedItem.price}{" "}
+                APT
+              </p>
+              {selectedItem.type === "resource" && (
+                <p className="text-sm text-gray-500">
+                  (5% marketplace fee applied)
+                </p>
+              )}
+            </div>
+            <div className="flex justify-end space-x-4">
               <button
+                className="btn btn-ghost"
                 onClick={() => setShowSellModal(false)}
-                className="text-neon-blue hover:text-neon-pink transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                className="btn btn-secondary"
+                onClick={handleSell}
                 disabled={isLoading}
               >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  className="h-6 w-6"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M6 18L18 6M6 6l12 12"
-                  />
-                </svg>
+                {isLoading ? (
+                  <span className="loading loading-spinner"></span>
+                ) : (
+                  "Confirm Sale"
+                )}
               </button>
-            </div>
-
-            <div className="mb-4">
-              {selectedItem.type === "nft" ? (
-                <div className="mb-4">
-                  <ImageWithFallback
-                    src={selectedItem.image}
-                    alt={selectedItem.name}
-                    className="w-full h-40 object-cover rounded mb-2"
-                  />
-                  <p className="text-sm text-light-gray">
-                    {selectedItem.description}
-                  </p>
-                </div>
-              ) : (
-                <div className="flex items-center mb-4">
-                  <span className="text-3xl mr-3">{selectedItem.icon}</span>
-                  <div>
-                    <h3 className="font-cyber text-neon-blue">
-                      {selectedItem.name}
-                    </h3>
-                    <p className="text-sm text-light-gray">
-                      You own: {selectedItem.quantity}
-                    </p>
-                  </div>
-                </div>
-              )}
-
-              <div className="flex justify-between items-center mb-4">
-                <div className="text-sm text-light-gray">Price per unit:</div>
-                <div className="text-neon-green font-mono">
-                  {selectedItem.price ? selectedItem.price : 0.05} APT
-                </div>
-              </div>
-
-              {selectedItem.type === "resource" && (
-                <div className="mb-4">
-                  <label className="block text-sm text-light-gray mb-1">
-                    Quantity to sell:
-                  </label>
-                  <div className="flex items-center">
-                    <button
-                      className="bg-dark-gray px-3 py-1 text-neon-pink"
-                      onClick={() => setQuantity(Math.max(1, quantity - 1))}
-                      disabled={isLoading}
-                    >
-                      -
-                    </button>
-                    <input
-                      type="number"
-                      min="1"
-                      max={selectedItem.quantity}
-                      value={quantity}
-                      onChange={(e) =>
-                        setQuantity(
-                          Math.min(
-                            selectedItem.quantity,
-                            Math.max(1, parseInt(e.target.value) || 1)
-                          )
-                        )
-                      }
-                      className="w-20 text-center bg-dark-gray text-light-gray border-y border-neon-pink py-1"
-                      disabled={isLoading}
-                    />
-                    <button
-                      className="bg-dark-gray px-3 py-1 text-neon-pink"
-                      onClick={() =>
-                        setQuantity(
-                          Math.min(selectedItem.quantity, quantity + 1)
-                        )
-                      }
-                      disabled={isLoading}
-                    >
-                      +
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              <div className="flex justify-between items-center mb-6 pt-4 border-t border-neon-pink">
-                <div className="text-sm font-cyber text-light-gray">
-                  You will receive:
-                </div>
-                <div className="text-xl text-neon-green font-mono">
-                  {(
-                    (selectedItem.price ? selectedItem.price : 0.05) *
-                    (selectedItem.type === "resource" ? quantity : 1)
-                  ).toFixed(2)}{" "}
-                  APT
-                </div>
-              </div>
-
-              <div className="flex justify-between">
-                <button
-                  className="cyber-button bg-dark-gray text-light-gray"
-                  onClick={() => setShowSellModal(false)}
-                  disabled={isLoading}
-                >
-                  Cancel
-                </button>
-                <button
-                  className={`cyber-button ${
-                    isLoading
-                      ? "bg-dark-gray text-light-gray"
-                      : "bg-neon-pink bg-opacity-20 text-neon-pink"
-                  }`}
-                  onClick={handleSell}
-                  disabled={isLoading}
-                >
-                  {isLoading ? (
-                    <div className="flex items-center">
-                      <svg
-                        className="animate-spin -ml-1 mr-2 h-4 w-4 text-neon-pink"
-                        xmlns="http://www.w3.org/2000/svg"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                      >
-                        <circle
-                          className="opacity-25"
-                          cx="12"
-                          cy="12"
-                          r="10"
-                          stroke="currentColor"
-                          strokeWidth="4"
-                        ></circle>
-                        <path
-                          className="opacity-75"
-                          fill="currentColor"
-                          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                        ></path>
-                      </svg>
-                      Processing...
-                    </div>
-                  ) : (
-                    "Confirm Sale"
-                  )}
-                </button>
-              </div>
             </div>
           </div>
         </div>

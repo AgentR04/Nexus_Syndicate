@@ -103,3 +103,27 @@ export interface PlayerAction {
   cooldownUntil?: number;
   cost?: Record<string, number>;
 }
+
+// Mission type
+export interface Mission {
+  id: string;
+  name: string;
+  description: string;
+  difficulty: 'easy' | 'medium' | 'hard';
+  reward: {
+    credits: number;
+    dataShards: number;
+    syntheticAlloys: number;
+    quantumCores: number;
+    experience?: number;
+  };
+  objectives: {
+    id: string;
+    description: string;
+    completed: boolean;
+  }[];
+  progress: number;
+  status?: 'available' | 'in_progress' | 'completed' | 'failed';
+  startedAt?: number;
+  completedAt?: number;
+}

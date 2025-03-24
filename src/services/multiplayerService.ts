@@ -1,37 +1,15 @@
+import { EventEmitter } from 'events';
 import { io, Socket } from 'socket.io-client';
 import { Territory, Agent, Player, GameEvent } from '../types/gameTypes';
+import { Session } from '../types/multiplayerTypes';
+import authService from './authService';
+
+// Constants
+const WEBSOCKET_URL = process.env.REACT_APP_WEBSOCKET_URL || 'http://localhost:3001';
+export const RESOURCE_UPDATE_EVENT = 'resource_update_event';
 
 // WebSocket server URL
-const SOCKET_URL = process.env.REACT_APP_WEBSOCKET_URL || 'http://localhost:3001';
-
-// Interface for session data
-export interface Session {
-  id: string;
-  code: string;
-  hostId: string;
-  hostName: string;
-  activityType: 'mission' | 'alliance' | 'resource' | 'custom';
-  privacy: 'public' | 'private' | 'friends';
-  maxPlayers: number;
-  currentPlayers: {
-    id: string;
-    username: string;
-    faction: string;
-    role: string;
-    walletAddress?: string;
-  }[];
-  createdAt: number;
-  currentMission?: any;
-  resourcePool?: {
-    resources: Record<string, number>;
-    contributors: {
-      id: string;
-      username: string;
-      faction: string;
-      contributions: Record<string, number>;
-    }[];
-  };
-}
+const SOCKET_URL = WEBSOCKET_URL;
 
 // Interface for invite data
 export interface InviteData {
@@ -41,6 +19,7 @@ export interface InviteData {
   fromId: string;
   fromName: string;
   toId: string;
+  message?: string;
   timestamp: number;
   status: 'pending' | 'accepted' | 'declined' | 'expired';
 }
@@ -61,25 +40,18 @@ export interface Mission {
   name: string;
   description: string;
   difficulty: 'easy' | 'medium' | 'hard';
-  rewards: {
-    experience: number;
+  reward: {
     credits: number;
-    resources: Record<string, number>;
-  };
-  requirements: {
-    minPlayers: number;
-    recommendedPlayers: number;
-    minLevel?: number;
+    dataShards: number;
+    syntheticAlloys: number;
+    quantumCores: number;
   };
   objectives: {
     id: string;
     description: string;
     completed: boolean;
   }[];
-  status: 'available' | 'in_progress' | 'completed' | 'failed';
   progress: number;
-  startedAt?: number;
-  completedAt?: number;
 }
 
 // Interface for alliance data
@@ -93,21 +65,67 @@ export interface AllianceData {
   status: 'active' | 'dissolved';
 }
 
-class MultiplayerService {
+class MultiplayerService extends EventEmitter {
   private socket: Socket | null = null;
-  private eventListeners: Record<string, Function[]> = {};
   private connected: boolean = false;
-  private reconnectAttempts: number = 0;
-  private maxReconnectAttempts: number = 5;
   private userId: string = '';
   private username: string = '';
   private walletAddress: string = '';
-  private demoMode: boolean = false;
-  private mockSessions: Session[] = [];
+  private activeSession: Session | null = null;
+  private mockSessions: Session[] = [
+    {
+      id: 'session-1',
+      code: 'ABC123',
+      hostId: 'player1',
+      hostName: 'Player 1',
+      activityType: 'mission',
+      privacy: 'public',
+      maxPlayers: 4,
+      currentPlayers: [
+        {
+          id: 'player1',
+          username: 'Player 1',
+          faction: 'Netrunners',
+          role: 'Host' as 'Host',
+          walletAddress: '0x123'
+        }
+      ],
+      createdAt: Date.now() - 3600000,
+      resourcePool: {
+        resources: {},
+        contributors: []
+      }
+    },
+    {
+      id: 'session-2',
+      code: 'DEF456',
+      hostId: 'player2',
+      hostName: 'Player 2',
+      activityType: 'alliance',
+      privacy: 'public',
+      maxPlayers: 6,
+      currentPlayers: [
+        {
+          id: 'player2',
+          username: 'Player 2',
+          faction: 'Corporates',
+          role: 'Host' as 'Host'
+        }
+      ],
+      createdAt: Date.now() - 7200000,
+      resourcePool: {
+        resources: {},
+        contributors: []
+      }
+    }
+  ];
+  private demoMode: boolean = true;
+  private gameState: any = null;
+  private eventListeners: Record<string, Function[]> = {};
   private mockInvites: InviteData[] = [];
   private mockMessages: Record<string, MessageData[]> = {};
   private mockMissions: Mission[] = [];
-  private activeSession: Session | null = null;
+  private onlineUsers: Map<string, {id: string, username: string, faction: string}> = new Map();
 
   // Connect to the multiplayer server
   public connect(userData: { id: string; username: string; walletAddress: string }): Promise<boolean> {
@@ -122,7 +140,7 @@ class MultiplayerService {
         this.socket = io(SOCKET_URL, {
           transports: ['websocket', 'polling'],
           reconnection: true,
-          reconnectionAttempts: this.maxReconnectAttempts,
+          reconnectionAttempts: 5,
           reconnectionDelay: 1000,
           reconnectionDelayMax: 5000,
           timeout: 10000,
@@ -131,7 +149,6 @@ class MultiplayerService {
         this.socket.on('connect', () => {
           console.log('Connected to multiplayer server');
           this.connected = true;
-          this.reconnectAttempts = 0;
           this.demoMode = false;
 
           // Register user with the server
@@ -151,14 +168,16 @@ class MultiplayerService {
 
         this.socket.on('connect_error', (error) => {
           console.error('Connection error:', error);
-          this.reconnectAttempts++;
           
-          if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-            console.log(`Failed to connect after ${this.maxReconnectAttempts} attempts, switching to demo mode`);
-            this.demoMode = true;
-            this.connected = true; // Pretend we're connected in demo mode
-            resolve(true);
+          // Fall back to demo mode after first connection error
+          this.enableDemoMode();
+          
+          // Disconnect socket to prevent further reconnection attempts
+          if (this.socket) {
+            this.socket.disconnect();
           }
+          
+          resolve(true); // Resolve the promise to continue app initialization
         });
 
         this.socket.on('disconnect', (reason) => {
@@ -184,123 +203,110 @@ class MultiplayerService {
     console.log('Enabling demo mode for multiplayer');
     this.demoMode = true;
     this.connected = true;
-    this.initializeMockData();
+    this.initMockData();
   }
 
   // Initialize mock data for demo mode
-  private initializeMockData(): void {
+  private initMockData(): void {
     // Create mock sessions
     this.mockSessions = [
       {
-        id: 'session1',
-        code: 'NS-ABC12',
-        hostId: 'host1',
-        hostName: 'CyberHawk',
+        id: 'session-1',
+        code: 'ABC123',
+        hostId: 'player1',
+        hostName: 'Player 1',
         activityType: 'mission',
         privacy: 'public',
         maxPlayers: 4,
         currentPlayers: [
           {
-            id: 'host1',
-            username: 'CyberHawk',
+            id: 'player1',
+            username: 'Player 1',
             faction: 'Netrunners',
-            role: 'Host'
-          },
-          {
-            id: 'player2',
-            username: 'DataWraith',
-            faction: 'Quantum Collective',
-            role: 'Member'
+            role: 'Host' as 'Host',
+            walletAddress: '0x123'
           }
         ],
-        createdAt: Date.now() - 3600000 // 1 hour ago
+        createdAt: Date.now() - 3600000,
+        resourcePool: {
+          resources: {},
+          contributors: []
+        }
       },
       {
-        id: 'session2',
-        code: 'NS-DEF34',
-        hostId: 'host2',
-        hostName: 'NeonShadow',
+        id: 'session-2',
+        code: 'DEF456',
+        hostId: 'player2',
+        hostName: 'Player 2',
         activityType: 'alliance',
         privacy: 'public',
         maxPlayers: 6,
         currentPlayers: [
           {
-            id: 'host2',
-            username: 'NeonShadow',
-            faction: 'Chrome Jackals',
-            role: 'Host'
+            id: 'player2',
+            username: 'Player 2',
+            faction: 'Corporates',
+            role: 'Host' as 'Host'
           }
         ],
-        createdAt: Date.now() - 1800000 // 30 minutes ago
+        createdAt: Date.now() - 7200000,
+        resourcePool: {
+          resources: {},
+          contributors: []
+        }
       }
     ];
 
     // Create mock missions
     this.mockMissions = [
       {
-        id: 'mission1',
+        id: 'mission-1',
         name: 'Corporate Data Heist',
         description: 'Infiltrate Arasaka Corp servers and extract classified project data.',
         difficulty: 'medium',
-        rewards: {
-          experience: 500,
-          credits: 1500,
-          resources: {
-            dataShards: 75,
-            syntheticAlloys: 30,
-            quantumCores: 10
-          }
-        },
-        requirements: {
-          minPlayers: 3,
-          recommendedPlayers: 4
+        reward: {
+          credits: 500,
+          dataShards: 20,
+          syntheticAlloys: 10,
+          quantumCores: 5
         },
         objectives: [
           {
-            id: 'objective1',
+            id: 'objective-1',
             description: 'Infiltrate the server room',
             completed: false
           },
           {
-            id: 'objective2',
+            id: 'objective-2',
             description: 'Extract the classified data',
             completed: false
           }
         ],
-        status: 'available',
         progress: 0
       },
       {
-        id: 'mission2',
+        id: 'mission-2',
         name: 'Quantum Vault Raid',
         description: 'Break into a secure quantum vault in Night City\'s financial district.',
         difficulty: 'hard',
-        rewards: {
-          experience: 800,
-          credits: 2500,
-          resources: {
-            dataShards: 120,
-            syntheticAlloys: 60,
-            quantumCores: 25
-          }
-        },
-        requirements: {
-          minPlayers: 4,
-          recommendedPlayers: 6
+        reward: {
+          credits: 1000,
+          dataShards: 30,
+          syntheticAlloys: 15,
+          quantumCores: 10
         },
         objectives: [
           {
-            id: 'objective1',
+            id: 'objective-1',
             description: 'Disable the security systems',
             completed: false
           },
           {
-            id: 'objective2',
+            id: 'objective-2',
             description: 'Crack the vault combination',
             completed: false
           }
         ],
-        status: 'available',
         progress: 0
       }
     ];
@@ -337,23 +343,50 @@ class MultiplayerService {
       this.emit('session_joined', session);
     });
 
+    this.socket.on('session_updated', (session: Session) => {
+      console.log('Session updated:', session);
+      this.activeSession = session;
+      this.emit('session_updated', session);
+    });
+
+    this.socket.on('sessions_list', (sessions: Session[]) => {
+      console.log('Sessions list:', sessions);
+      this.emit('sessions_list', sessions);
+    });
+
     this.socket.on('player_joined', (data: { sessionId: string; player: any }) => {
       console.log('Player joined:', data);
       if (this.activeSession && this.activeSession.id === data.sessionId) {
         this.activeSession.currentPlayers.push(data.player);
         this.emit('session_updated', this.activeSession);
       }
+      this.emit('player_joined', data);
     });
 
     this.socket.on('player_left', (data: { sessionId: string; playerId: string }) => {
       console.log('Player left:', data);
       if (this.activeSession && this.activeSession.id === data.sessionId) {
-        this.activeSession.currentPlayers = this.activeSession.currentPlayers.filter(
-          (player) => player.id !== data.playerId
-        );
+        this.activeSession.currentPlayers = this.activeSession.currentPlayers.filter(p => p.id !== data.playerId);
         this.emit('session_updated', this.activeSession);
       }
-      this.emit('session_left', data);
+      this.emit('player_left', data);
+    });
+
+    this.socket.on('host_changed', (data: { sessionId: string; hostId: string; hostName: string }) => {
+      console.log('Host changed:', data);
+      if (this.activeSession && this.activeSession.id === data.sessionId) {
+        this.activeSession.hostId = data.hostId;
+        this.activeSession.hostName = data.hostName;
+      }
+      this.emit('host_changed', data);
+    });
+
+    this.socket.on('session_closed', (data: { sessionId: string }) => {
+      console.log('Session closed:', data);
+      if (this.activeSession && this.activeSession.id === data.sessionId) {
+        this.activeSession = null;
+      }
+      this.emit('session_closed', data);
     });
 
     this.socket.on('session_left', (data: { sessionId: string; playerId: string }) => {
@@ -364,236 +397,205 @@ class MultiplayerService {
       this.emit('session_left', data);
     });
 
-    this.socket.on('host_changed', (data: { sessionId: string; hostId: string; hostName: string }) => {
-      console.log('Host changed:', data);
-      if (this.activeSession && this.activeSession.id === data.sessionId) {
-        this.activeSession.hostId = data.hostId;
-        this.activeSession.hostName = data.hostName;
-        this.emit('session_updated', this.activeSession);
+    // Game state events
+    this.socket.on('game_state_updated', (gameState: any) => {
+      console.log('Game state updated:', gameState);
+      this.gameState = gameState;
+      this.emit('game_state_updated', gameState);
+      
+      // If the current player's resources have changed, emit a resource update event
+      if (gameState.players) {
+        const currentPlayer = gameState.players.find((p: Player) => p.id === this.userId);
+        if (currentPlayer && currentPlayer.resources) {
+          // Dispatch a custom event to update resources in the UI
+          const event = new CustomEvent(RESOURCE_UPDATE_EVENT, {
+            detail: { resources: currentPlayer.resources }
+          });
+          document.dispatchEvent(event);
+        }
       }
     });
 
-    this.socket.on('session_updated', (session: Session) => {
-      // Update the current session with the latest data from the server
-      if (this.activeSession && this.activeSession.id === session.id) {
-        this.activeSession = session;
-        this.emit('session_updated', session);
-      }
+    // User presence events
+    this.socket.on('user_online', (userData: {id: string, username: string, faction: string}) => {
+      console.log('User online:', userData);
+      this.onlineUsers.set(userData.id, userData);
+      this.emit('user_online', userData);
     });
 
-    this.socket.on('session_sync', (session: Session) => {
-      // Replace the current session with the synced data from the server
-      if (this.activeSession && this.activeSession.id === session.id) {
-        this.activeSession = session;
-        this.emit('session_synced', session);
-      }
+    this.socket.on('user_offline', (userData: {id: string}) => {
+      console.log('User offline:', userData);
+      this.onlineUsers.delete(userData.id);
+      this.emit('user_offline', userData);
     });
 
-    // Chat events
-    this.socket.on('message_received', (message: any) => {
-      console.log('Message received:', message);
-      this.emit('message_received', message);
-    });
-
-    // Mission events
-    this.socket.on('mission_started', (mission: Mission) => {
-      console.log('Mission started:', mission);
-      if (this.activeSession) {
-        this.activeSession.currentMission = mission;
-      }
-      this.emit('mission_started', mission);
-    });
-
-    this.socket.on('mission_progress', (data: { missionId: string; progress: number }) => {
-      console.log('Mission progress:', data);
-      if (this.activeSession && this.activeSession.currentMission && this.activeSession.currentMission.id === data.missionId) {
-        this.activeSession.currentMission.progress = data.progress;
-      }
-      this.emit('mission_progress', data);
-    });
-
-    this.socket.on('mission_completed', (data: { missionId: string; rewards: any }) => {
-      console.log('Mission completed:', data);
-      if (this.activeSession && this.activeSession.currentMission && this.activeSession.currentMission.id === data.missionId) {
-        this.activeSession.currentMission.status = 'completed';
-        this.activeSession.currentMission.completedAt = Date.now();
-      }
-      this.emit('mission_completed', data);
-    });
-
-    // Resource events
-    this.socket.on('resource_pool_updated', (data: { sessionId: string; resourcePool: any }) => {
-      console.log('Resource pool updated:', data);
-      if (this.activeSession && this.activeSession.id === data.sessionId) {
-        this.activeSession.resourcePool = data.resourcePool;
-        this.emit('session_updated', this.activeSession);
-      }
-    });
-
-    // Error events
+    // Error handling
     this.socket.on('error', (error: any) => {
-      console.error('Server error:', error);
+      console.error('Socket error:', error);
       this.emit('error', error);
     });
   }
 
   // Event handling methods
-  public on(event: string, callback: Function): void {
+  public on(event: string, callback: Function): this {
     if (!this.eventListeners[event]) {
       this.eventListeners[event] = [];
     }
     this.eventListeners[event].push(callback);
-    console.log(`Added listener for event: ${event}, total listeners: ${this.eventListeners[event].length}`);
+    return this;
   }
-
-  public off(event: string, callback: Function): void {
-    if (!this.eventListeners[event]) {
-      return;
+  
+  public off(event: string, callback: Function): this {
+    if (this.eventListeners[event]) {
+      this.eventListeners[event] = this.eventListeners[event].filter(cb => cb !== callback);
     }
-    this.eventListeners[event] = this.eventListeners[event].filter(
-      (cb) => cb !== callback
-    );
-    console.log(`Removed listener for event: ${event}, remaining listeners: ${this.eventListeners[event].length}`);
+    return this;
   }
-
-  public emit(event: string, data: any): void {
-    console.log(`Emitting event: ${event}`, data);
-    if (!this.eventListeners[event]) {
-      console.warn(`No listeners for event: ${event}`);
-      return;
-    }
-    
-    // Make a copy of the listeners array before iterating to avoid issues if listeners are added/removed during emission
-    const listeners = [...this.eventListeners[event]];
-    console.log(`Calling ${listeners.length} listeners for event: ${event}`);
-    
-    listeners.forEach((callback) => {
-      try {
+  
+  public emit(event: string, data: any): boolean {
+    if (this.eventListeners[event]) {
+      this.eventListeners[event].forEach(callback => {
         callback(data);
-      } catch (error) {
-        console.error(`Error in event listener for ${event}:`, error);
-      }
-    });
+      });
+    }
+    return true;
   }
 
   // Create a new session
   public createSession(sessionData: Partial<Session>): void {
+    if (!this.userId) {
+      console.error('Cannot create session: not logged in');
+      this.emit('error', { message: 'Not logged in' });
+      return;
+    }
+    
     if (this.demoMode) {
       // Create a mock session in demo mode
+      const sessionId = `session-${Date.now()}`;
+      const newSession: Session = {
+        id: sessionId,
+        code: Math.random().toString(36).substring(2, 8).toUpperCase(),
+        hostId: sessionData.hostId || this.userId,
+        hostName: sessionData.hostName || this.username,
+        activityType: sessionData.activityType || 'mission',
+        privacy: sessionData.privacy || 'public',
+        maxPlayers: sessionData.maxPlayers || 4,
+        currentPlayers: sessionData.currentPlayers || [],
+        createdAt: Date.now(),
+        resourcePool: {
+          resources: {},
+          contributors: []
+        }
+      };
+      
+      this.mockSessions.push(newSession);
+      this.activeSession = newSession;
+      
       setTimeout(() => {
-        const newSession: Session = {
-          id: `session-${Date.now()}`,
-          code: this.generateSessionCode(),
-          hostId: this.userId,
-          hostName: this.username,
-          activityType: sessionData.activityType || 'mission',
-          privacy: sessionData.privacy || 'public',
-          maxPlayers: sessionData.maxPlayers || 4,
-          currentPlayers: [
-            {
-              id: this.userId,
-              username: this.username,
-              faction: 'Netrunners', // Default faction
-              role: 'Host'
-            }
-          ],
-          createdAt: Date.now()
-        };
-        
-        this.mockSessions.push(newSession);
-        this.activeSession = newSession;
-        
-        // Make sure to emit the event with the complete session object
-        console.log("Emitting session_created event with session:", newSession);
         this.emit('session_created', newSession);
       }, 500);
+      
       return;
     }
-
+    
     if (!this.socket || !this.connected) {
       console.error('Cannot create session: not connected to server');
+      this.emit('error', { message: 'Not connected to server' });
       return;
     }
-
-    this.socket.emit('create_session', sessionData);
+    
+    // Initialize game state with current territories
+    const initialGameState = {
+      territories: sessionData.territories || [],
+      players: [
+        {
+          id: this.userId,
+          name: this.username,
+          faction: authService.getUser()?.faction || 'Netrunners',
+          resources: {
+            credits: 1000,
+            dataShards: 50,
+            syntheticAlloys: 30,
+            quantumCores: 15
+          }
+        }
+      ],
+      agents: [],
+      gameEvents: []
+    };
+    
+    // Add the current player to the session
+    const currentPlayers = sessionData.currentPlayers || [];
+    if (!currentPlayers.some(p => p.id === this.userId)) {
+      currentPlayers.push({
+        id: this.userId,
+        username: this.username,
+        faction: authService.getUser()?.faction || 'Netrunners',
+        role: 'Host' as 'Host',
+        walletAddress: this.walletAddress
+      });
+    }
+    
+    this.socket.emit('create_session', {
+      ...sessionData,
+      currentPlayers,
+      territories: sessionData.territories || []
+    });
   }
 
   // Join an existing session
   public joinSession(sessionCode: string): void {
     if (this.demoMode) {
-      // Join a mock session in demo mode
-      setTimeout(() => {
-        // Try to find existing session
-        let session = this.mockSessions.find(s => s.code === sessionCode);
-        
-        // If session doesn't exist in demo mode, create a mock one
-        if (!session) {
-          console.log(`Creating mock session for code: ${sessionCode}`);
-          const newSession: Session = {
-            id: `session-${Date.now()}`,
-            code: sessionCode,
-            hostId: 'host-demo',
-            hostName: 'DemoHost',
-            activityType: 'mission',
-            privacy: 'public',
-            maxPlayers: 4,
-            currentPlayers: [
-              {
-                id: 'host-demo',
-                username: 'DemoHost',
-                faction: 'Netrunners',
-                role: 'Host'
-              }
-            ],
-            createdAt: Date.now() - 600000 // 10 minutes ago
-          };
-          
-          this.mockSessions.push(newSession);
-          session = newSession;
-        }
-        
-        // At this point, session is guaranteed to exist
-        const currentSession = session as Session;
-        
-        // Add the current user to the session if not already in it
-        const playerExists = currentSession.currentPlayers.some(p => p.id === this.userId);
-        
-        let updatedSession: Session;
-        
-        if (!playerExists) {
-          // Add the current user to the session
-          updatedSession = { ...currentSession };
-          updatedSession.currentPlayers.push({
-            id: this.userId,
-            username: this.username,
-            faction: 'Netrunners', // Default faction
-            role: 'Member'
-          });
-          
-          // Update the session in mock data
-          const index = this.mockSessions.findIndex(s => s.id === currentSession.id);
-          if (index !== -1) {
-            this.mockSessions[index] = updatedSession;
-          }
-        } else {
-          updatedSession = currentSession;
-        }
-        
-        this.activeSession = updatedSession;
-        
-        // Make sure to emit the event with the complete session object
-        console.log("Emitting session_joined event with session:", updatedSession);
-        this.emit('session_joined', updatedSession);
-      }, 500);
+      // Find mock session in demo mode
+      const sessionIndex = this.mockSessions.findIndex(s => s.code === sessionCode);
+      
+      if (sessionIndex === -1) {
+        console.error('Session not found with code:', sessionCode);
+        this.emit('error', { message: 'Session not found' });
+        return;
+      }
+      
+      const session = { ...this.mockSessions[sessionIndex] };
+      
+      // Add current player to the session
+      const player = {
+        id: this.userId,
+        username: this.username,
+        faction: 'Netrunners', // Default faction
+        role: 'Member' as 'Member',
+        walletAddress: this.walletAddress
+      };
+      
+      if (!session.currentPlayers.some(p => p.id === player.id)) {
+        session.currentPlayers.push(player);
+      }
+      
+      this.activeSession = session;
+      this.mockSessions[sessionIndex] = session;
+      
+      this.emit('session_joined', session);
+      this.emit('session_updated', session);
       return;
     }
-
+    
     if (!this.socket || !this.connected) {
       console.error('Cannot join session: not connected to server');
+      this.emit('error', { message: 'Not connected to server' });
       return;
     }
-
-    this.socket.emit('join_session', { sessionCode });
+    
+    const player = {
+      id: this.userId,
+      username: this.username,
+      faction: authService.getUser()?.faction || 'Netrunners',
+      role: 'Member',
+      walletAddress: this.walletAddress
+    };
+    
+    this.socket.emit('join_session', {
+      sessionCode,
+      player
+    });
   }
 
   // Leave the current session
@@ -630,98 +632,102 @@ class MultiplayerService {
   }
 
   // Send an invite to a player
-  public sendInvite(sessionId: string, playerId: string): void {
+  public sendInvite(targetPlayerId: string, message?: string): void {
+    if (!this.activeSession) {
+      console.error('Cannot send invite: no active session');
+      this.emit('error', { message: 'No active session' });
+      return;
+    }
+    
     if (this.demoMode) {
-      // Send a mock invite in demo mode
+      // Handle in demo mode
       setTimeout(() => {
-        const session = this.mockSessions.find(s => s.id === sessionId);
+        const invite: InviteData = {
+          id: `invite-${Date.now()}`,
+          sessionId: this.activeSession!.id,
+          sessionCode: this.activeSession!.code,
+          fromId: this.userId,
+          fromName: this.username,
+          toId: targetPlayerId,
+          message: message || `Join my session: ${this.activeSession!.code}`,
+          timestamp: Date.now(),
+          status: 'pending'
+        };
         
-        if (session) {
-          const invite: InviteData = {
-            id: `invite-${Date.now()}`,
-            sessionId,
-            sessionCode: session.code,
-            fromId: this.userId,
-            fromName: this.username,
-            toId: playerId,
-            timestamp: Date.now(),
-            status: 'pending'
-          };
-          
-          this.mockInvites.push(invite);
-          // In a real scenario, the server would emit this to the target player
-        }
+        this.mockInvites.push(invite);
+        this.emit('invite_sent', invite);
       }, 500);
       return;
     }
-
+    
     if (!this.socket || !this.connected) {
       console.error('Cannot send invite: not connected to server');
+      this.emit('error', { message: 'Not connected to server' });
       return;
     }
-
-    this.socket.emit('send_invite', { sessionId, playerId });
+    
+    this.socket.emit('send_invite', {
+      sessionId: this.activeSession.id,
+      targetPlayerId,
+      message: message || `Join my session: ${this.activeSession.code}`
+    });
   }
 
   // Accept an invite
   public acceptInvite(inviteId: string): void {
     if (this.demoMode) {
-      // Accept a mock invite in demo mode
+      // Handle in demo mode
       setTimeout(() => {
-        const invite = this.mockInvites.find(i => i.id === inviteId);
-        
-        if (invite) {
-          // Update invite status
+        const inviteIndex = this.mockInvites.findIndex((i: InviteData) => i.id === inviteId);
+        if (inviteIndex !== -1) {
+          const invite = this.mockInvites[inviteIndex];
           invite.status = 'accepted';
-          
-          // Join the session
           this.joinSession(invite.sessionCode);
-          
-          // Emit the event
+          this.mockInvites.splice(inviteIndex, 1);
           this.emit('invite_accepted', invite);
         }
       }, 500);
       return;
     }
-
+    
     if (!this.socket || !this.connected) {
       console.error('Cannot accept invite: not connected to server');
+      this.emit('error', { message: 'Not connected to server' });
       return;
     }
-
+    
     this.socket.emit('accept_invite', { inviteId });
   }
 
   // Decline an invite
   public declineInvite(inviteId: string): void {
     if (this.demoMode) {
-      // Decline a mock invite in demo mode
+      // Handle in demo mode
       setTimeout(() => {
-        const invite = this.mockInvites.find(i => i.id === inviteId);
-        
-        if (invite) {
-          // Update invite status
+        const inviteIndex = this.mockInvites.findIndex((i: InviteData) => i.id === inviteId);
+        if (inviteIndex !== -1) {
+          const invite = this.mockInvites[inviteIndex];
           invite.status = 'declined';
-          
-          // Emit the event
+          this.mockInvites.splice(inviteIndex, 1);
           this.emit('invite_declined', invite);
         }
       }, 500);
       return;
     }
-
+    
     if (!this.socket || !this.connected) {
       console.error('Cannot decline invite: not connected to server');
+      this.emit('error', { message: 'Not connected to server' });
       return;
     }
-
+    
     this.socket.emit('decline_invite', { inviteId });
   }
 
   // Send a chat message
   public sendMessage(sessionId: string, content: string): void {
     if (this.demoMode) {
-      // Send a mock message in demo mode
+      // Handle in demo mode
       setTimeout(() => {
         if (!this.mockMessages[sessionId]) {
           this.mockMessages[sessionId] = [];
@@ -741,20 +747,20 @@ class MultiplayerService {
       }, 200);
       return;
     }
-
+    
     if (!this.socket || !this.connected) {
       console.error('Cannot send message: not connected to server');
+      this.emit('error', { message: 'Not connected to server' });
       return;
     }
-
-    this.socket.emit('send_message', { sessionId, content });
+    
+    this.socket.emit('send_message', {
+      sessionId,
+      content
+    });
   }
 
-  /**
-   * Start a mission in the current session
-   * @param sessionId The ID of the session
-   * @param missionId The ID of the mission to start
-   */
+  // Start a mission in the current session
   public startMission(sessionId: string, missionId: string): void {
     if (!this.socket) {
       console.warn('Cannot start mission: No active socket connection');
@@ -847,6 +853,330 @@ class MultiplayerService {
    */
   public getActiveSession(): Session | null {
     return this.activeSession;
+  }
+
+  // Claim a territory
+  public claimTerritory(territoryId: number): void {
+    if (!this.activeSession) {
+      console.error('Cannot claim territory: no active session');
+      this.emit('error', { message: 'No active session' });
+      return;
+    }
+    
+    if (this.demoMode) {
+      // Handle in demo mode
+      setTimeout(() => {
+        if (this.gameState) {
+          const territoryIndex = this.gameState.territories.findIndex((t: Territory) => t.id === territoryId);
+          if (territoryIndex !== -1) {
+            const territory = this.gameState.territories[territoryIndex];
+            
+            // Only allow claiming if territory is unclaimed or owned by the player already
+            if (territory.owner && territory.owner !== this.userId && territory.owner !== 'unclaimed') {
+              console.log('Cannot claim: territory owned by another player');
+              this.emit('error', { message: 'Territory owned by another player' });
+              return;
+            }
+            
+            territory.owner = this.userId;
+            territory.status = 'owned';
+            this.gameState.territories[territoryIndex] = territory;
+            
+            // Add a game event
+            this.gameState.gameEvents.push({
+              id: `event-${Date.now()}`,
+              type: 'territory_claim',
+              sourcePlayerId: this.userId,
+              territoryId: territoryId,
+              timestamp: Date.now(),
+              status: 'completed'
+            });
+            
+            this.emit('game_state_updated', this.gameState);
+          }
+        }
+      }, 500);
+      return;
+    }
+    
+    if (!this.socket || !this.connected) {
+      console.error('Cannot claim territory: not connected to server');
+      this.emit('error', { message: 'Not connected to server' });
+      return;
+    }
+    
+    this.socket.emit('claim_territory', {
+      sessionId: this.activeSession.id,
+      playerId: this.userId,
+      territoryId
+    });
+  }
+  
+  // Extract resources from a territory
+  public extractResources(territoryId: number, resources: Record<string, number>): void {
+    if (!this.activeSession) {
+      console.error('Cannot extract resources: no active session');
+      this.emit('error', { message: 'No active session' });
+      return;
+    }
+    
+    if (this.demoMode) {
+      // Handle in demo mode
+      setTimeout(() => {
+        if (this.gameState) {
+          const playerIndex = this.gameState.players.findIndex((p: { id: string }) => p.id === this.userId);
+          if (playerIndex !== -1) {
+            const player = this.gameState.players[playerIndex];
+            const typedResources = player.resources as Record<string, number>;
+            Object.keys(resources).forEach(resourceType => {
+              typedResources[resourceType] = (typedResources[resourceType] || 0) + resources[resourceType];
+            });
+            this.gameState.players[playerIndex] = player;
+            
+            // Add a game event
+            this.gameState.gameEvents.push({
+              id: `event-${Date.now()}`,
+              type: "resource_extract",
+              sourcePlayerId: this.userId,
+              territoryId: territoryId,
+              resources: resources,
+              timestamp: Date.now(),
+              status: 'completed'
+            });
+            
+            this.emit('game_state_updated', this.gameState);
+            
+            // Dispatch a custom event to update resources in the UI
+            const event = new CustomEvent(RESOURCE_UPDATE_EVENT, {
+              detail: { resources: player.resources }
+            });
+            document.dispatchEvent(event);
+          }
+        }
+      }, 500);
+      return;
+    }
+    
+    if (!this.socket || !this.connected) {
+      console.error('Cannot extract resources: not connected to server');
+      this.emit('error', { message: 'Not connected to server' });
+      return;
+    }
+    
+    this.socket.emit('extract_resources', {
+      sessionId: this.activeSession.id,
+      playerId: this.userId,
+      territoryId,
+      resources
+    });
+  }
+  
+  // Deploy an agent
+  public deployAgent(agentType: string, territoryId: number, task: string): void {
+    if (!this.activeSession) {
+      console.error('Cannot deploy agent: no active session');
+      this.emit('error', { message: 'No active session' });
+      return;
+    }
+    
+    if (this.demoMode) {
+      // Handle in demo mode
+      setTimeout(() => {
+        if (this.gameState) {
+          const newAgent: Agent = {
+            id: Date.now(), 
+            name: `Agent ${Math.floor(Math.random() * 1000)}`,
+            type: agentType,
+            status: 'active',
+            location: territoryId.toString(), 
+            task: task,
+            ownerId: this.userId,
+            power: 10
+          };
+          
+          this.gameState.agents.push(newAgent);
+          
+          // Add a game event
+          this.gameState.gameEvents.push({
+            id: `event-${Date.now()}`,
+            type: "agent_deploy",
+            sourcePlayerId: this.userId,
+            agentId: newAgent.id,
+            territoryId: territoryId,
+            timestamp: Date.now(),
+            status: 'completed'
+          });
+          
+          this.emit('game_state_updated', this.gameState);
+        }
+      }, 500);
+      return;
+    }
+    
+    if (!this.socket || !this.connected) {
+      console.error('Cannot deploy agent: not connected to server');
+      this.emit('error', { message: 'Not connected to server' });
+      return;
+    }
+    
+    this.socket.emit('deploy_agent', {
+      sessionId: this.activeSession.id,
+      playerId: this.userId,
+      agentType,
+      territoryId,
+      task
+    });
+  }
+  
+  // Update game state
+  public updateGameState(gameState: any): void {
+    if (!this.activeSession) {
+      console.error('Cannot update game state: no active session');
+      this.emit('error', { message: 'No active session' });
+      return;
+    }
+    
+    if (this.demoMode) {
+      // Handle in demo mode
+      this.gameState = gameState;
+      this.emit('game_state_updated', gameState);
+      return;
+    }
+    
+    if (!this.socket || !this.connected) {
+      console.error('Cannot update game state: not connected to server');
+      this.emit('error', { message: 'Not connected to server' });
+      return;
+    }
+    
+    this.socket.emit('update_game_state', {
+      sessionId: this.activeSession.id,
+      gameState
+    });
+  }
+  
+  // Get current game state
+  public getGameState(): any {
+    return this.gameState;
+  }
+  
+  // Get online users
+  public getOnlineUsers(): {id: string, username: string, faction: string}[] {
+    if (this.demoMode) {
+      return Array.from(this.onlineUsers.values());
+    }
+    
+    if (!this.socket || !this.connected) {
+      console.error('Cannot get online users: not connected to server');
+      return [];
+    }
+    
+    return Array.from(this.onlineUsers.values());
+  }
+
+  // Get list of available sessions
+  public getAvailableSessions(): Promise<Session[]> {
+    return new Promise((resolve) => {
+      if (this.demoMode) {
+        // Return mock sessions in demo mode
+        setTimeout(() => {
+          resolve(this.mockSessions);
+        }, 500);
+        return;
+      }
+      
+      if (!this.socket || !this.connected) {
+        console.error('Cannot get sessions: not connected to server');
+        resolve([]);
+        return;
+      }
+      
+      this.socket.emit('get_sessions', {});
+      
+      // Set up a one-time listener for the response
+      const handleSessions = (sessions: Session[]) => {
+        this.off('sessions_list', handleSessions);
+        resolve(sessions);
+      };
+      
+      this.on('sessions_list', handleSessions);
+    });
+  }
+
+  // Add a player to a session
+  public addPlayerToSession(sessionId: string, player: { id: string; username: string; faction: string; walletAddress?: string }): void {
+    if (this.demoMode) {
+      // Handle in demo mode
+      setTimeout(() => {
+        const sessionIndex = this.mockSessions.findIndex(s => s.id === sessionId);
+        
+        if (sessionIndex !== -1) {
+          const session = this.mockSessions[sessionIndex];
+          
+          // Add player with proper role type
+          const sessionPlayer = {
+            ...player,
+            role: "Member" as "Host" | "Member" // Explicitly type as union type
+          };
+          
+          if (!session.currentPlayers.some(p => p.id === player.id)) {
+            session.currentPlayers.push(sessionPlayer);
+          }
+          
+          this.activeSession = session;
+          this.emit('player_joined', { sessionId, playerId: player.id });
+          this.emit('session_updated', session);
+        }
+      }, 500);
+      return;
+    }
+    
+    if (!this.socket || !this.connected) {
+      console.error('Cannot add player to session: not connected to server');
+      this.emit('error', { message: 'Not connected to server' });
+      return;
+    }
+    
+    this.socket.emit('add_player_to_session', {
+      sessionId,
+      player
+    });
+  }
+
+  // Update player resources in game state
+  public updatePlayerResources(resources: Record<string, number>): void {
+    if (!this.gameState) {
+      console.error('Cannot update resources: no game state');
+      return;
+    }
+    
+    if (this.demoMode) {
+      // Handle in demo mode
+      setTimeout(() => {
+        if (this.gameState) {
+          const playerIndex = this.gameState.players.findIndex((p: { id: string }) => p.id === this.userId);
+          if (playerIndex !== -1) {
+            const player = this.gameState.players[playerIndex];
+            const typedResources = player.resources as Record<string, number>;
+            
+            // Update resources
+            Object.keys(resources).forEach(key => {
+              if (typedResources[key] !== undefined) {
+                typedResources[key] += resources[key];
+              } else {
+                typedResources[key] = resources[key];
+              }
+            });
+            
+            player.resources = typedResources;
+            this.gameState.players[playerIndex] = player;
+            
+            this.emit('game_state_updated', this.gameState);
+          }
+        }
+      }, 500);
+      return;
+    }
   }
 }
 
