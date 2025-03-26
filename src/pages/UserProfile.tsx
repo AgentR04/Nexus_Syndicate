@@ -333,7 +333,7 @@ const UserProfile: React.FC<UserProfileProps> = ({ onLogout }) => {
   };
 
   const handleInputChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
+    e: { target: { name: string; value: string } }
   ) => {
     const { name, value } = e.target;
     setUserData((prev) => ({

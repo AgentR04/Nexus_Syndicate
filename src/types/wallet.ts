@@ -11,15 +11,12 @@ export interface PetraWallet {
 }
 
 // Declare the global window object with the aptos property
-declare global {
-  interface Window {
-    aptos?: PetraWallet;
-  }
-}
+// We're not using declare global here to avoid conflicts with other declarations
+export {};
 
 // Utility functions for interacting with the Petra wallet
 export const isPetraInstalled = (): boolean => {
-  return window.aptos !== undefined;
+  return typeof window !== 'undefined' && window.aptos !== undefined;
 };
 
 export const connectPetraWallet = async (): Promise<string> => {

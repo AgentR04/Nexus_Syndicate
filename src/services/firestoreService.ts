@@ -40,14 +40,15 @@ export enum TransactionStatus {
 // Transaction interface
 export interface Transaction {
   id: string;
-  buyerId: string;
-  sellerId: string;
+  userId: string;  
+  buyerId?: string;
+  sellerId?: string;
   itemId: string;
   itemName: string;
   itemType: 'resource' | 'nft';
   quantity: number;
   price: number;
-  totalAmount: number;
+  totalAmount?: number;
   transactionType?: TransactionType;
   status: TransactionStatus;
   txHash?: string;
@@ -465,6 +466,48 @@ class FirestoreService {
   }
 
   /**
+   * Update a transaction by its transaction hash
+   * @param txHash The blockchain transaction hash
+   * @param updateData The data to update
+   * @returns Boolean indicating success
+   */
+  async updateTransactionByTxHash(
+    txHash: string,
+    updateData: Partial<Omit<Transaction, 'id' | 'createdAt' | 'updatedAt'>>
+  ): Promise<boolean> {
+    try {
+      // Query for the transaction with the given txHash
+      const transactionsRef = collection(db, TRANSACTIONS_COLLECTION);
+      const q = query(transactionsRef, where('txHash', '==', txHash));
+      const querySnapshot = await getDocs(q);
+      
+      if (querySnapshot.empty) {
+        console.warn(`No transaction found with txHash: ${txHash}`);
+        return false;
+      }
+      
+      // Update all matching transactions (should typically be just one)
+      let success = true;
+      for (const doc of querySnapshot.docs) {
+        try {
+          await updateDoc(doc.ref, {
+            ...updateData,
+            updatedAt: serverTimestamp()
+          });
+        } catch (err) {
+          console.error(`Error updating transaction ${doc.id}:`, err);
+          success = false;
+        }
+      }
+      
+      return success;
+    } catch (error) {
+      console.error('Error updating transaction by txHash:', error);
+      return false;
+    }
+  }
+
+  /**
    * Get user transactions
    * @param userId The user ID
    * @param role Optional role filter ('buyer' or 'seller')
@@ -517,22 +560,22 @@ class FirestoreService {
         ]);
         
         const buyerTransactions = buyerSnapshot.docs.map(doc => {
-          const data = doc.data();
+          const data = doc.data() as Record<string, any>;
           return {
             ...data,
             id: doc.id,
-            createdAt: (data.createdAt as Timestamp).toDate(),
-            updatedAt: (data.updatedAt as Timestamp).toDate()
+            createdAt: data.createdAt ? (data.createdAt as Timestamp).toDate() : new Date(),
+            updatedAt: data.updatedAt ? (data.updatedAt as Timestamp).toDate() : new Date()
           } as Transaction;
         });
         
         const sellerTransactions = sellerSnapshot.docs.map(doc => {
-          const data = doc.data();
+          const data = doc.data() as Record<string, any>;
           return {
             ...data,
             id: doc.id,
-            createdAt: (data.createdAt as Timestamp).toDate(),
-            updatedAt: (data.updatedAt as Timestamp).toDate()
+            createdAt: data.createdAt ? (data.createdAt as Timestamp).toDate() : new Date(),
+            updatedAt: data.updatedAt ? (data.updatedAt as Timestamp).toDate() : new Date()
           } as Transaction;
         });
         
@@ -545,12 +588,12 @@ class FirestoreService {
       const querySnapshot = await getDocs(q);
       
       return querySnapshot.docs.map(doc => {
-        const data = doc.data();
+        const data = doc.data() as Record<string, any>;
         return {
           ...data,
           id: doc.id,
-          createdAt: (data.createdAt as Timestamp).toDate(),
-          updatedAt: (data.updatedAt as Timestamp).toDate()
+          createdAt: data.createdAt ? (data.createdAt as Timestamp).toDate() : new Date(),
+          updatedAt: data.updatedAt ? (data.updatedAt as Timestamp).toDate() : new Date()
         } as Transaction;
       });
     } catch (error) {
@@ -663,6 +706,7 @@ class FirestoreService {
       
       // Create transaction record
       const transactionData = {
+        userId: buyerId, // Add userId field
         buyerId,
         sellerId: listing.sellerId,
         listingId,

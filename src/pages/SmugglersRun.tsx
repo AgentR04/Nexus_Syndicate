@@ -189,7 +189,7 @@ const SmugglersRun: React.FC = () => {
   const [touchStartY, setTouchStartY] = useState(0);
   const [isTouching, setIsTouching] = useState(false);
 
-  const handleTouchStart = (e: React.TouchEvent) => {
+  const handleTouchStart = (e: { touches: { clientX: number; clientY: number }[] }) => {
     if (e.touches.length > 0) {
       setTouchStartX(e.touches[0].clientX);
       setTouchStartY(e.touches[0].clientY);
@@ -197,7 +197,7 @@ const SmugglersRun: React.FC = () => {
     }
   };
 
-  const handleTouchMove = (e: React.TouchEvent) => {
+  const handleTouchMove = (e: { touches: { clientX: number; clientY: number }[] }) => {
     if (e.touches.length > 0 && gameState.isPlaying && isTouching) {
       const touchX = e.touches[0].clientX;
       const touchY = e.touches[0].clientY;

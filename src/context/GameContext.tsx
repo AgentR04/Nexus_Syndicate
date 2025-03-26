@@ -63,7 +63,7 @@ const GameContext = createContext<GameContextType>({
 });
 
 // Provider component
-export const GameProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // State for territories, agents, and players
   const [territories, setTerritories] = useState<Territory[]>(mockTerritories);
   const [agents, setAgents] = useState<Agent[]>(mockAgents);

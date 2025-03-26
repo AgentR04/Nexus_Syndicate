@@ -1,0 +1,10 @@
+[package]
+name = "NexusSyndicateMarketplace"
+version = "0.1.0"
+authors = ["Nexus Syndicate Team"]
+
+[addresses]
+nexus_syndicate = "_"
+
+[dependencies]
+AptosFramework = { git = "https://github.com/aptos-labs/aptos-core.git", subdir = "aptos-move/framework/aptos-framework/", rev = "mainnet" }

@@ -466,10 +466,11 @@ const GameMap: React.FC = () => {
       setShowTooltip(true);
 
       // Calculate tooltip position - position to the right side of the territory
-      const rect = e.currentTarget.getBoundingClientRect();
+      const target = e.target as HTMLElement;
+      const boundingRect = target.getBoundingClientRect();
       setTooltipPosition({
-        x: rect.right + 30,
-        y: rect.top + rect.height / 2,
+        x: boundingRect.right + 30,
+        y: boundingRect.top + boundingRect.height / 2,
       });
     };
 
@@ -812,9 +813,10 @@ const GameMap: React.FC = () => {
             onWheel={(e) => {
               e.preventDefault();
               // Get cursor position relative to the map container
-              const rect = e.currentTarget.getBoundingClientRect();
-              const cursorX = e.clientX - rect.left;
-              const cursorY = e.clientY - rect.top;
+              const rect = e.currentTarget as HTMLElement;
+              const boundingRect = rect.getBoundingClientRect();
+              const cursorX = e.clientX - boundingRect.left;
+              const cursorY = e.clientY - boundingRect.top;
 
               // Calculate the cursor position in the scaled/translated coordinate system
               const worldX = (cursorX - mapOffset.x) / mapZoom;
@@ -881,7 +883,7 @@ const GameMap: React.FC = () => {
               {/* Grid coordinates */}
               <g>
                 {Array.from({ length: 10 }, (_, i) => (
-                  <React.Fragment key={i}>
+                  <React.Fragment key={i.toString()}>
                     <text
                       x={i * 300 - 1000}
                       y="-1050"
